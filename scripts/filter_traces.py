@@ -135,12 +135,15 @@ def grade_trace(grader, prompt_messages, response_text, rubric_items, max_retrie
     return {"overall_score": score, "criteria_results": results, "tag_scores": tag_scores}
 
 
-def load_rubrics(path):
+def load_rubrics(paths):
+    """Load rubrics from one or more HealthBench JSONL files."""
     rubrics = {}
-    with open(path) as f:
-        for line in f:
-            ex = json.loads(line)
-            rubrics[ex["prompt_id"]] = ex["rubrics"]
+    for path in paths:
+        with open(path) as f:
+            for line in f:
+                ex = json.loads(line)
+                rubrics[ex["prompt_id"]] = ex["rubrics"]
+        print(f"  {path}: {len(rubrics)} total rubrics")
     print(f"Loaded rubrics for {len(rubrics)} prompts")
     return rubrics
 
@@ -148,7 +151,7 @@ def load_rubrics(path):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--input", required=True)
-    parser.add_argument("--healthbench-data", required=True)
+    parser.add_argument("--healthbench-data", required=True, nargs="+")
     parser.add_argument("--grader-model", default="Qwen/Qwen2.5-14B-Instruct-AWQ")
     parser.add_argument("--output-dir", required=True)
     parser.add_argument("--min-score", type=float, default=0.4)

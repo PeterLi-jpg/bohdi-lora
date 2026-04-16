@@ -4,7 +4,7 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=4
-#SBATCH --time=08:00:00
+#SBATCH --time=48:00:00
 #SBATCH --output=logs/generate_traces_%j.out
 #SBATCH --error=logs/generate_traces_%j.err
 #SBATCH --job-name=bohdi_gen
@@ -20,10 +20,9 @@ nvidia-smi --list-gpus
 
 python scripts/download_data.py
 
-# only healthbench_hard — filter needs rubrics which only exist for Hard
 python scripts/generate_traces.py \
     --model nvidia/Llama-3.1-Nemotron-Nano-8B-v1 \
-    --datasets healthbench_hard \
+    --datasets healthbench_hard healthbench \
     --exclude-ids data/raw/hard_200_sample_ids.json \
     --output data/sft/raw_traces.jsonl \
     --use-bodhi \

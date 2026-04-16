@@ -12,7 +12,7 @@ LLM overconfidence is reinforced through RLHF on benchmarks that reward confiden
 
 ## Training Data
 
-HealthBench Hard (1000 examples) + HealthBench Full (5000 examples) combined, with 200 samples held out for evaluation. Prompts are run through the BOHDI wrapper to generate virtue-aligned responses, then graded using the HealthBench rubric grader and filtered by score. This yields ~2500 high-quality training pairs.
+HealthBench Hard (1000 examples) + HealthBench Full (5000 examples) combined = 5000 unique prompts, with 200 held out for evaluation. That gives 4800 prompts for training data generation. These are run through the BOHDI wrapper, graded using the HealthBench rubric grader, and filtered by score — yielding ~2500-3000 high-quality training pairs.
 
 ## Pipeline
 
