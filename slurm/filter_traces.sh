@@ -10,9 +10,11 @@
 #SBATCH --job-name=bohdi_filter
 #SBATCH --mem=200G
 
+set -euo pipefail
+
 module load miniforge/24.3.0-0
 conda activate bohdi  # change to your env name
-cd /orcd/home/002/sebasmos/code/bohdi-lora  # update this
+cd "${BOHDI_DIR:-$SLURM_SUBMIT_DIR}"
 
 if [ -z "$HF_TOKEN" ]; then
     echo "ERROR: HF_TOKEN is not set. Required for gated model access."

@@ -1,11 +1,13 @@
 """LoRA SFT on filtered BOHDI traces."""
 
 import argparse
-import yaml
+import random
 
+import numpy as np
 import torch
+import yaml
 from datasets import load_dataset
-from transformers import AutoModelForCausalLM, AutoTokenizer
+from transformers import AutoModelForCausalLM, AutoTokenizer, set_seed
 from trl import SFTTrainer, SFTConfig, DataCollatorForCompletionOnlyLM
 from peft import LoraConfig
 
@@ -60,11 +62,18 @@ def main():
     train_cfg = cfg["training"]
     data_cfg = cfg["data"]
 
+    seed = int(cfg.get("seed", train_cfg.get("seed", 42)))
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    set_seed(seed)
+
     _tokenizer = AutoTokenizer.from_pretrained(model_cfg["name"])
     if _tokenizer.pad_token is None:
         _tokenizer.pad_token = _tokenizer.eos_token
 
-    dtype = DTYPE_MAP.get(model_cfg.get("torch_dtype", "bfloat16"), torch.bfloat16)
+    dtype_str = model_cfg.get("torch_dtype") or "bfloat16"
+    dtype = DTYPE_MAP.get(dtype_str, torch.bfloat16)
     print(f"Loading {model_cfg['name']} ({dtype})...")
     model = AutoModelForCausalLM.from_pretrained(
         model_cfg["name"], torch_dtype=dtype, device_map="auto",
@@ -89,6 +98,9 @@ def main():
         tokenizer=_tokenizer,
     )
 
+    # derive bf16 from torch_dtype so the two flags can't diverge
+    use_bf16 = train_cfg.get("bf16", dtype == torch.bfloat16)
+
     training_args = SFTConfig(
         output_dir="checkpoints",
         num_train_epochs=train_cfg["num_epochs"],
@@ -100,7 +112,9 @@ def main():
         logging_steps=train_cfg["logging_steps"],
         save_strategy=train_cfg["save_strategy"],
         eval_strategy=train_cfg["eval_strategy"],
-        bf16=train_cfg.get("bf16", True),
+        bf16=use_bf16,
+        seed=seed,
+        data_seed=seed,
         report_to="none",
         load_best_model_at_end=True,
         metric_for_best_model="eval_loss",

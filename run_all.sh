@@ -7,13 +7,13 @@ set -e
 JOB1=$(sbatch --parsable slurm/generate_traces.sh)
 echo "generate_traces submitted: $JOB1"
 
-JOB2=$(sbatch --parsable --dependency=afterok:$JOB1 slurm/filter_traces.sh)
+JOB2=$(sbatch --parsable --dependency=afterok:"$JOB1" slurm/filter_traces.sh)
 echo "filter_traces submitted: $JOB2 (waits for $JOB1)"
 
-JOB3=$(sbatch --parsable --dependency=afterok:$JOB2 slurm/train_lora.sh)
+JOB3=$(sbatch --parsable --dependency=afterok:"$JOB2" slurm/train_lora.sh)
 echo "train_lora submitted: $JOB3 (waits for $JOB2)"
 
-JOB4=$(sbatch --parsable --dependency=afterok:$JOB3 slurm/eval_lora.sh)
+JOB4=$(sbatch --parsable --dependency=afterok:"$JOB3" slurm/eval_lora.sh)
 echo "eval_lora submitted: $JOB4 (waits for $JOB3)"
 
 echo ""

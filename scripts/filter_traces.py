@@ -4,9 +4,11 @@ import argparse
 import json
 import random
 import re
+import statistics
 from collections import defaultdict
 from pathlib import Path
 
+import numpy as np
 import torch
 from tqdm import tqdm
 from transformers import AutoModelForCausalLM, AutoTokenizer
@@ -179,6 +181,8 @@ def main():
     args = parser.parse_args()
 
     random.seed(args.seed)
+    np.random.seed(args.seed)
+    torch.manual_seed(args.seed)
     out_dir = Path(args.output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -218,7 +222,7 @@ def main():
     scores = [t["grade"]["overall_score"] for t in graded]
     if scores:
         print(f"Scores: min={min(scores):.3f} max={max(scores):.3f} "
-              f"mean={sum(scores)/len(scores):.3f} median={sorted(scores)[len(scores)//2]:.3f}")
+              f"mean={sum(scores)/len(scores):.3f} median={statistics.median(scores):.3f}")
 
     random.shuffle(kept)
     n_val = max(1, int(len(kept) * args.val_ratio)) if len(kept) > 1 else 0
