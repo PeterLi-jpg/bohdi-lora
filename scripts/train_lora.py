@@ -24,27 +24,25 @@ def format_example(batch):
 
 
 def find_response_template(tokenizer):
-    """Figure out the token sequence that marks the start of an assistant turn.
+    """Detect the assistant turn header by comparing templates with/without generation prompt.
 
-    We render a tiny dummy conversation through the chat template and grab
-    the text that appears right before the assistant's content.
+    The difference between add_generation_prompt=True and False is exactly
+    the assistant turn header (e.g. "<start_of_turn>model\\n" for Gemma,
+    "<|start_header_id|>assistant<|end_header_id|>\\n\\n" for Llama 3).
     """
-    dummy = [
-        {"role": "user", "content": "X"},
-        {"role": "assistant", "content": "Y"},
-    ]
-    rendered = tokenizer.apply_chat_template(dummy, tokenize=False, add_generation_prompt=False)
-    # find where the actual response content starts
-    marker_end = rendered.rfind("Y")
-    # walk backwards past whitespace to find the template boundary
-    prefix = rendered[:marker_end]
-    # grab the last line / tag before the response — that's our template
-    for candidate_len in (30, 20, 10):
-        candidate = prefix[-candidate_len:].lstrip()
-        if candidate:
-            return candidate
-    # fallback: use a reasonably safe suffix
-    return prefix[-15:]
+    dummy = [{"role": "user", "content": "hi"}]
+    without_gen = tokenizer.apply_chat_template(dummy, tokenize=False, add_generation_prompt=False)
+    with_gen = tokenizer.apply_chat_template(dummy, tokenize=False, add_generation_prompt=True)
+
+    if with_gen.startswith(without_gen):
+        template = with_gen[len(without_gen):]
+        if template.strip():
+            return template
+
+    raise ValueError(
+        f"Could not auto-detect response template. "
+        f"Template suffix: {with_gen[-50:]!r}"
+    )
 
 
 def main():
@@ -107,6 +105,7 @@ def main():
         load_best_model_at_end=True,
         metric_for_best_model="eval_loss",
         save_total_limit=3,
+        gradient_checkpointing=True,
         max_seq_length=train_cfg.get("max_seq_length", 4096),
     )
 
@@ -116,7 +115,7 @@ def main():
         peft_config=lora_config,
         train_dataset=ds["train"],
         eval_dataset=ds["validation"],
-        processing_class=_tokenizer,
+        tokenizer=_tokenizer,
         data_collator=collator,
         formatting_func=format_example,
     )

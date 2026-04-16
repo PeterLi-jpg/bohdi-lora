@@ -12,8 +12,14 @@
 
 module load miniforge/24.3.0-0
 conda activate bohdi  # change to your env name
-export HF_TOKEN=${HF_TOKEN}  # needed for gated models
 cd /orcd/home/002/sebasmos/code/bohdi-lora  # update this
+
+if [ -z "$HF_TOKEN" ]; then
+    echo "ERROR: HF_TOKEN is not set. MedGemma requires gated access."
+    echo "Run: export HF_TOKEN=hf_..."
+    exit 1
+fi
+export HF_TOKEN
 export WANDB_MODE=offline
 
 echo "$(date) | starting lora training on $(hostname)"

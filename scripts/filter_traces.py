@@ -86,11 +86,27 @@ class LocalGrader:
 
 
 def parse_json_response(text):
-    cleaned = re.sub(r"^```json\s*|\s*```$", "", text.strip())
+    text = text.strip()
+    # direct parse (no fences)
     try:
-        return json.loads(cleaned)
+        return json.loads(text)
     except json.JSONDecodeError:
-        return {}
+        pass
+    # extract from code fences
+    m = re.search(r"```(?:json)?\s*(.*?)\s*```", text, re.DOTALL)
+    if m:
+        try:
+            return json.loads(m.group(1))
+        except json.JSONDecodeError:
+            pass
+    # last resort: find a JSON object containing criteria_met
+    m = re.search(r"\{[^{}]*\"criteria_met\"\s*:\s*(?:true|false)[^{}]*\}", text, re.IGNORECASE)
+    if m:
+        try:
+            return json.loads(m.group(0))
+        except json.JSONDecodeError:
+            pass
+    return {}
 
 
 def grade_trace(grader, prompt_messages, response_text, rubric_items, max_retries=3):

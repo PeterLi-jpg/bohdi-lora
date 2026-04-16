@@ -28,7 +28,7 @@ def ensure_downloaded(name):
     return path
 
 
-def load_dataset(name):
+def load_healthbench(name):
     path = ensure_downloaded(name)
     examples = []
     with open(path) as f:
@@ -44,7 +44,7 @@ def load_multiple_datasets(names):
     all_ex = []
     seen = set()
     for name in names:
-        for ex in load_dataset(name):
+        for ex in load_healthbench(name):
             if ex["prompt_id"] not in seen:
                 seen.add(ex["prompt_id"])
                 all_ex.append(ex)
