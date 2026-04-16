@@ -1,0 +1,98 @@
+"""LoRA SFT on filtered BOHDI traces."""
+
+import argparse
+import yaml
+
+import torch
+from datasets import load_dataset
+from transformers import AutoModelForCausalLM, AutoTokenizer
+from peft import LoraConfig
+from trl import SFTTrainer, SFTConfig
+
+DTYPE_MAP = {"bfloat16": torch.bfloat16, "float16": torch.float16, "float32": torch.float32}
+
+_tokenizer = None
+
+
+def format_example(batch):
+    texts = []
+    for msgs, resp in zip(batch["messages"], batch["response"]):
+        msgs = list(msgs)
+        msgs.append({"role": "assistant", "content": resp})
+        texts.append(_tokenizer.apply_chat_template(msgs, tokenize=False, add_generation_prompt=False))
+    return texts
+
+
+def main():
+    global _tokenizer
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--config", required=True)
+    args = parser.parse_args()
+
+    with open(args.config) as f:
+        cfg = yaml.safe_load(f)
+
+    model_cfg = cfg["model"]
+    lora_cfg = cfg["lora"]
+    train_cfg = cfg["training"]
+    data_cfg = cfg["data"]
+
+    _tokenizer = AutoTokenizer.from_pretrained(model_cfg["name"])
+    if _tokenizer.pad_token is None:
+        _tokenizer.pad_token = _tokenizer.eos_token
+
+    dtype = DTYPE_MAP.get(model_cfg.get("torch_dtype", "bfloat16"), torch.bfloat16)
+    print(f"Loading {model_cfg['name']} ({dtype})...")
+    model = AutoModelForCausalLM.from_pretrained(
+        model_cfg["name"], torch_dtype=dtype, device_map="auto",
+    )
+
+    lora_config = LoraConfig(
+        r=lora_cfg["r"],
+        lora_alpha=lora_cfg["lora_alpha"],
+        lora_dropout=lora_cfg.get("lora_dropout", 0.05),
+        target_modules=lora_cfg["target_modules"],
+        task_type=lora_cfg["task_type"],
+    )
+
+    ds = load_dataset("json", data_files={"train": data_cfg["train_file"], "validation": data_cfg["val_file"]})
+    print(f"Train: {len(ds['train'])}  Val: {len(ds['validation'])}")
+
+    training_args = SFTConfig(
+        output_dir="checkpoints",
+        num_train_epochs=train_cfg["num_epochs"],
+        per_device_train_batch_size=train_cfg["per_device_train_batch_size"],
+        gradient_accumulation_steps=train_cfg["gradient_accumulation_steps"],
+        learning_rate=train_cfg["learning_rate"],
+        warmup_ratio=train_cfg["warmup_ratio"],
+        lr_scheduler_type=train_cfg["lr_scheduler_type"],
+        logging_steps=train_cfg["logging_steps"],
+        save_strategy=train_cfg["save_strategy"],
+        eval_strategy=train_cfg["eval_strategy"],
+        bf16=train_cfg.get("bf16", True),
+        report_to="none",
+        load_best_model_at_end=True,
+        metric_for_best_model="eval_loss",
+        max_seq_length=train_cfg.get("max_seq_length", 2048),
+    )
+
+    # let SFTTrainer handle peft wrapping
+    trainer = SFTTrainer(
+        model=model,
+        args=training_args,
+        peft_config=lora_config,
+        train_dataset=ds["train"],
+        eval_dataset=ds["validation"],
+        tokenizer=_tokenizer,
+        formatting_func=format_example,
+    )
+
+    trainer.train()
+    trainer.save_model("checkpoints/best")
+    _tokenizer.save_pretrained("checkpoints/best")
+    print("saved to checkpoints/best")
+
+
+if __name__ == "__main__":
+    main()

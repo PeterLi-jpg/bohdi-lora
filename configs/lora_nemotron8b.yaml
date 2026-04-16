@@ -1,0 +1,35 @@
+model:
+  name: nvidia/Llama-3.1-Nemotron-Nano-8B-v1
+  torch_dtype: bfloat16
+  quantization: null  # "4bit" for QLoRA
+
+lora:
+  r: 16
+  lora_alpha: 32
+  lora_dropout: 0.05
+  target_modules:
+    - q_proj
+    - k_proj
+    - v_proj
+    - o_proj
+    - up_proj
+    - down_proj
+  task_type: CAUSAL_LM
+
+training:
+  num_epochs: 2
+  per_device_train_batch_size: 4
+  gradient_accumulation_steps: 4
+  learning_rate: 2.0e-4
+  warmup_ratio: 0.05
+  lr_scheduler_type: cosine
+  max_seq_length: 2048
+  logging_steps: 10
+  save_strategy: epoch
+  eval_strategy: epoch
+  bf16: true
+
+data:
+  train_file: data/sft/train.jsonl
+  val_file: data/sft/val.jsonl
+  eval_sample_ids: data/raw/hard_200_sample_ids.json

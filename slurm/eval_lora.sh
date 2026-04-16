@@ -1,0 +1,39 @@
+#!/bin/bash
+#SBATCH --partition=mit_normal_gpu
+#SBATCH --gres=gpu:h200:1
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=4
+#SBATCH --time=04:00:00
+#SBATCH --output=logs/eval_%j.out
+#SBATCH --error=logs/eval_%j.err
+#SBATCH --job-name=bohdi_eval
+#SBATCH --mem=100G
+
+module load miniforge/24.3.0-0
+conda activate bohdi  # change to your env name
+export HF_TOKEN=${HF_TOKEN}  # needed for gated models
+cd /orcd/home/002/sebasmos/code/bohdi-lora  # update this
+
+echo "$(date) | starting eval on $(hostname)"
+nvidia-smi --list-gpus
+
+python scripts/download_data.py
+
+MODEL="nvidia/Llama-3.1-Nemotron-Nano-8B-v1"
+IDS="data/raw/hard_200_sample_ids.json"
+LORA="checkpoints/best"
+
+echo "--- base, no wrapper ---"
+python scripts/eval_healthbench.py --model $MODEL --sample-ids $IDS --output eval/base_no_wrapper.json
+
+echo "--- base + bodhi ---"
+python scripts/eval_healthbench.py --model $MODEL --use-bodhi --sample-ids $IDS --output eval/base_bodhi.json
+
+echo "--- lora, no wrapper ---"
+python scripts/eval_healthbench.py --model $MODEL --lora-path $LORA --sample-ids $IDS --output eval/lora_no_wrapper.json
+
+echo "--- lora + bodhi ---"
+python scripts/eval_healthbench.py --model $MODEL --lora-path $LORA --use-bodhi --sample-ids $IDS --output eval/lora_bodhi.json
+
+echo "$(date) | done"
