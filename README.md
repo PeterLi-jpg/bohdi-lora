@@ -30,7 +30,7 @@ python scripts/generate_traces.py \
 # 2. Grade and filter traces
 python scripts/filter_traces.py \
     --input data/sft/raw_traces.jsonl \
-    --healthbench-data data/raw/healthbench_hard.jsonl \
+    --healthbench-data data/raw/healthbench_hard.jsonl data/raw/healthbench.jsonl \
     --output-dir data/sft/
 
 # 3. Train LoRA
