@@ -94,6 +94,21 @@ def main():
     _tokenizer = AutoTokenizer.from_pretrained(model_cfg["name"])
     if _tokenizer.pad_token is None:
         _tokenizer.pad_token = _tokenizer.eos_token
+    # TRL half-precision training overflows when padding_side != "right"; the
+    # SFTTrainer warns about this. Set it explicitly so we don't depend on the
+    # tokenizer's upstream default (which flips between model families).
+    _tokenizer.padding_side = "right"
+
+    # HF's get_constant_schedule ignores warmup_ratio silently — warmup only
+    # takes effect on scheduler types that support it (constant_with_warmup,
+    # linear, cosine, polynomial, etc.). Fail loudly instead of letting the
+    # "I set warmup, why is the LR still full on step 1?" bug happen on cluster.
+    if train_cfg.get("warmup_ratio", 0) > 0 and train_cfg.get("lr_scheduler_type") == "constant":
+        raise ValueError(
+            "lr_scheduler_type='constant' does not apply warmup_ratio. "
+            "Use 'constant_with_warmup', 'linear', 'cosine', or 'polynomial' "
+            "if you want warmup, or set warmup_ratio: 0.0 to be explicit."
+        )
 
     dtype_str = model_cfg.get("torch_dtype") or "bfloat16"
     dtype = DTYPE_MAP.get(dtype_str, torch.bfloat16)
