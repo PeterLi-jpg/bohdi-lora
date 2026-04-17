@@ -4,6 +4,9 @@
 
 set -e
 
+# SBATCH --output=logs/... lines fail if logs/ doesn't exist — create it first.
+mkdir -p logs
+
 JOB1=$(sbatch --parsable slurm/generate_traces.sh)
 echo "generate_traces submitted: $JOB1"
 

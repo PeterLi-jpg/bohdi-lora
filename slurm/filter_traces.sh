@@ -16,7 +16,10 @@ module load miniforge/24.3.0-0
 conda activate bohdi  # change to your env name
 cd "${BOHDI_DIR:-$SLURM_SUBMIT_DIR}"
 
-if [ -z "$HF_TOKEN" ]; then
+# pick up HF_TOKEN from a local .env if the login shell didn't export it
+[ -f .env ] && source .env
+
+if [ -z "${HF_TOKEN:-}" ]; then
     echo "ERROR: HF_TOKEN is not set. Required for gated model access."
     echo "Run: export HF_TOKEN=hf_..."
     exit 1

@@ -6,6 +6,8 @@ build/
 
 data/raw/*.jsonl
 data/sft/*.jsonl
+data/sft/smoke/
+eval/smoke/
 
 checkpoints/
 *.bin

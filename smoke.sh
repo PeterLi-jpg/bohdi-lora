@@ -20,10 +20,11 @@ if [ -z "${HF_TOKEN:-}" ]; then
     exit 1
 fi
 
-MODEL="google/gemma-3n-E4B-it"
+MODEL="${SMOKE_MODEL:-google/gemma-3n-E4B-it}"
 # small non-gated grader so smoke doesn't need a second gated access
 GRADER="Qwen/Qwen2.5-0.5B-Instruct"
-N_EXAMPLES=3
+# override with: N_EXAMPLES=10 bash smoke.sh
+N_EXAMPLES="${N_EXAMPLES:-3}"
 
 echo "=== smoke test | $(date) ==="
 echo "model:   $MODEL"
