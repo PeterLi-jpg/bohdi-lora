@@ -34,6 +34,10 @@ echo
 
 mkdir -p data/sft/smoke eval/smoke logs
 
+echo "--- 0/4: preflight ---"
+# Verify the env before we burn minutes; use smoke's own models for the check.
+python scripts/preflight.py --models "$MODEL" "$GRADER"
+
 echo "--- 1/4: download data ---"
 python scripts/download_data.py
 

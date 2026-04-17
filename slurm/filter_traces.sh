@@ -29,6 +29,9 @@ export HF_TOKEN
 echo "$(date) | starting trace filtering on $(hostname)"
 nvidia-smi --list-gpus
 
+# Fail fast on missing deps / gated-access / no-GPU before loading the grader.
+python scripts/preflight.py
+
 python scripts/download_data.py
 
 python scripts/filter_traces.py \

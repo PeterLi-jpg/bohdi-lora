@@ -29,6 +29,9 @@ export HF_TOKEN
 echo "$(date) | starting trace generation on $(hostname)"
 nvidia-smi --list-gpus
 
+# Fail fast on missing deps / gated-access / no-GPU before burning queue time.
+python scripts/preflight.py
+
 python scripts/download_data.py
 
 python scripts/generate_traces.py \

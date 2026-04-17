@@ -30,6 +30,9 @@ export WANDB_MODE=offline
 echo "$(date) | starting lora training on $(hostname)"
 nvidia-smi --list-gpus
 
+# Fail fast on missing deps / gated-access / no-GPU before loading MedGemma-27B.
+python scripts/preflight.py
+
 python scripts/train_lora.py --config configs/lora_medgemma27b.yaml
 
 echo "$(date) | done"

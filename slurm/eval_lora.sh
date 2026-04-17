@@ -29,6 +29,9 @@ export HF_TOKEN
 echo "$(date) | starting eval on $(hostname)"
 nvidia-smi --list-gpus
 
+# Fail fast on missing deps / gated-access / no-GPU before the 4-config sweep.
+python scripts/preflight.py
+
 python scripts/download_data.py
 
 MODEL="google/medgemma-27b-text-it"
