@@ -203,13 +203,28 @@ Structure:
 
 The figures are rendered automatically by `scripts/plot_ushape.py`, which runs at the end of `slurm/eval_lora.sh` and `smoke.sh`. Output in `eval/figures/`:
 
-- `u_curve.png` — mean score across `easy | medium | hard`, one line per config. The "U" on `base_no_wrapper` should flatten on `lora_no_wrapper`.
-- `u_fail.png` — same x-axis, failure rate on y-axis. Classic inverted-U from the Nature Medicine paper; LoRA should flatten it.
+**Coarse (3-tier, from `ushape.json`):**
+- `u_curve.png` — mean score across `easy | medium | hard`, one line per config. Good for slide decks but straight-segment, not a curve.
+- `u_fail.png` — same x-axis, failure rate on y-axis.
 - `theme_fail.png` — grouped bar chart, themes on x-axis, fail rate per config. `emergency_referrals` and `hedging` are highlighted (BOHDI's humility claim lives there).
 
-To regenerate plots from an existing `eval/ushape.json` without rerunning eval:
+**Smooth (10-bin, from per-example eval JSONs):**
+- `u_curve_smooth.png` — mean score vs continuous difficulty (pos-points sum), 10 equal-frequency bins, quadratic fit overlay. Actual curve, not 3 line segments.
+- `u_fail_smooth.png` — same but fail rate. Expect the classic U on `base_no_wrapper`.
+- `u_scatter.png` — 4-panel scatter, all 200 examples per config with the quadratic fit and the fail-threshold line. Shows the raw data distribution.
+
+To regenerate plots without rerunning eval:
 ```bash
+# coarse only
 python scripts/plot_ushape.py --input eval/ushape.json --out-dir eval/figures
+
+# coarse + smooth + scatter
+python scripts/plot_ushape.py \
+    --input eval/ushape.json \
+    --eval-jsons eval/base_no_wrapper.json eval/base_bodhi.json \
+                 eval/lora_no_wrapper.json eval/lora_bodhi.json \
+    --healthbench data/raw/healthbench_hard.jsonl data/raw/healthbench.jsonl \
+    --n-bins 10 --out-dir eval/figures
 ```
 
 ## 6. Reproducibility guarantees

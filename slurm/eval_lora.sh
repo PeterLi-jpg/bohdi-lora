@@ -57,6 +57,11 @@ python scripts/eval_ushape.py \
     --output eval/ushape.json
 
 echo "--- plot U-shape figures ---"
-python scripts/plot_ushape.py --input eval/ushape.json --out-dir eval/figures
+python scripts/plot_ushape.py \
+    --input eval/ushape.json \
+    --eval-jsons eval/base_no_wrapper.json eval/base_bodhi.json eval/lora_no_wrapper.json eval/lora_bodhi.json \
+    --healthbench data/raw/healthbench_hard.jsonl data/raw/healthbench.jsonl \
+    --n-bins 10 \
+    --out-dir eval/figures
 
 echo "$(date) | done"

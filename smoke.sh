@@ -80,7 +80,12 @@ python scripts/eval_ushape.py \
 # Plots are thin with only 1 config + 3 samples, but we still run plot_ushape
 # as a wiring check so cluster-scale plotting isn't first-run on the cluster.
 echo "--- 4d/4: render U-shape figures ---"
-python scripts/plot_ushape.py --input eval/smoke/ushape.json --out-dir eval/smoke/figures
+python scripts/plot_ushape.py \
+    --input eval/smoke/ushape.json \
+    --eval-jsons eval/smoke/lora.json \
+    --healthbench data/raw/healthbench_hard.jsonl \
+    --n-bins 3 \
+    --out-dir eval/smoke/figures
 
 echo
 echo "=== smoke test PASSED | $(date) ==="
