@@ -91,8 +91,11 @@ If smoke passes, the pipeline is wired correctly. Scale up to a bigger GPU + rea
 Run this FIRST, every time you change any pipeline code. It exercises all four stages (generate, filter, train, eval) end-to-end with `gemma-3n-E4B-it` so bugs surface in minutes instead of after a 20-minute slurm queue. Per Felipe, 4B is the floor for meaningful BOHDI signal; E2B works too but its reasoning is often too weak to produce traces worth training on. Scale to MedGemma-27B once local runs show promise.
 
 ```bash
-bash smoke.sh
+# default: 3 examples, ~10 min. For a meatier smoke:
+N_EXAMPLES=10 bash smoke.sh
 ```
+
+Validated on an M4 Max / 64 GB on 2026-04-16 — full pipeline ran in ~40 min at N_EXAMPLES=10. `bash smoke.sh` starts with a preflight check (scripts/preflight.py) that fails in ~10s if HF_TOKEN is wrong, a gated model isn't accessible, or a dep is missing, so env problems surface before trace generation.
 
 Expected outputs:
 - `data/sft/smoke/raw_traces.jsonl` — 3 BOHDI traces
