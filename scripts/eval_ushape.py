@@ -193,8 +193,15 @@ def main():
             "source": ep,
             "n_examples": len(results),
             "overall_mean": ev.get("mean"),
-            "overall_brier": ev.get("brier"),
-            "overall_ece": ev.get("ece"),
+            # renamed in eval_healthbench.py to reflect that these are NOT
+            # model-calibration measures; see issue #1. fall back to legacy names.
+            "overall_brier_grader_consistency": (
+                ev.get("brier_grader_consistency", ev.get("brier"))
+            ),
+            "overall_ece_grader_consistency": (
+                ev.get("ece_grader_consistency", ev.get("ece"))
+            ),
+            "grader_parse_failure_rate": ev.get("grader_parse_failure_rate"),
             "by_tier": aggregate_by_tier(results, meta, q1, q2, args.fail_threshold),
             "by_theme": aggregate_by_theme(results, meta, args.fail_threshold),
         }

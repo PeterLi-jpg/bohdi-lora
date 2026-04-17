@@ -21,7 +21,7 @@ HealthBench Hard (1000 examples) + HealthBench Full (5000 examples) combined = 5
 3. `bash smoke.sh` — end-to-end test with `gemma-3n-E4B-it` (<10 min, catches bugs)
 4. `bash run_all.sh` — full pipeline on slurm
 
-See [REPRODUCIBILITY.md](REPRODUCIBILITY.md) for step-by-step instructions, expected outputs, and troubleshooting.
+See [REPRODUCIBILITY.md](REPRODUCIBILITY.md) for step-by-step instructions, expected outputs, and troubleshooting. [KNOWN_ISSUES.md](KNOWN_ISSUES.md) tracks open methodological concerns that need discussion before the paper eval is final.
 
 ## Pipeline
 

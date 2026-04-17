@@ -112,22 +112,32 @@ def parse_json_response(text):
 
 
 def grade_trace(grader, prompt_messages, response_text, rubric_items, max_retries=3):
+    """Grade a single trace. Returns score + per-criterion results + a
+    ``parse_failures`` count so callers can surface grader reliability
+    (see issue #5 — previously silent parse failures were folded in as
+    genuine rubric misses)."""
     convo = prompt_messages + [{"role": "assistant", "content": response_text}]
     convo_str = "\n\n".join(f"{m['role']}: {m['content']}" for m in convo)
 
     results = []
+    parse_failures = 0
+    raw_failures = []
     for item in rubric_items:
         crit_str = f"[{item['points']}] {item['criterion']}"
         grader_prompt = GRADER_TEMPLATE.replace("<<conversation>>", convo_str).replace("<<rubric_item>>", crit_str)
 
         parsed = None
+        last_raw = None
         for _ in range(max_retries):
             raw = grader.grade(grader_prompt)
+            last_raw = raw
             parsed = parse_json_response(raw)
             if "criteria_met" in parsed and isinstance(parsed["criteria_met"], bool):
                 break
         else:
             parsed = {"criteria_met": False, "explanation": "grader parse failed"}
+            parse_failures += 1
+            raw_failures.append({"criterion": item["criterion"], "raw": last_raw})
 
         results.append({
             "criterion": item["criterion"],
@@ -135,6 +145,7 @@ def grade_trace(grader, prompt_messages, response_text, rubric_items, max_retrie
             "tags": item.get("tags", []),
             "criteria_met": parsed["criteria_met"],
             "explanation": parsed.get("explanation", ""),
+            "parse_failed": parsed.get("explanation") == "grader parse failed",
         })
 
     total_pos = sum(r["points"] for r in results if r["points"] > 0)
@@ -152,7 +163,13 @@ def grade_trace(grader, prompt_messages, response_text, rubric_items, max_retrie
         if pos > 0:
             tag_scores[tag] = sum(r["points"] for r in items if r["criteria_met"]) / pos
 
-    return {"overall_score": score, "criteria_results": results, "tag_scores": tag_scores}
+    return {
+        "overall_score": score,
+        "criteria_results": results,
+        "tag_scores": tag_scores,
+        "parse_failures": parse_failures,
+        "raw_parse_failures": raw_failures,
+    }
 
 
 def load_rubrics(paths):
@@ -206,7 +223,14 @@ def main():
         trace["grade"] = result
         graded.append(trace)
 
+    total_parse_failures = sum(t["grade"]["parse_failures"] for t in graded)
+    total_rubric_items = sum(len(t["grade"]["criteria_results"]) for t in graded)
     print(f"Graded {len(graded)}/{len(traces)}")
+    if total_rubric_items:
+        pct = 100.0 * total_parse_failures / total_rubric_items
+        print(f"Grader parse failures: {total_parse_failures}/{total_rubric_items} "
+              f"rubric items ({pct:.2f}%) — high values indicate grader unreliability, "
+              f"not model failure (see issue #5)")
 
     if args.graded_output:
         p = Path(args.graded_output)

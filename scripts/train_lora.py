@@ -34,12 +34,29 @@ def load_sft_jsonl(path):
 
 
 def format_example(batch):
-    texts = []
-    for msgs, resp in zip(batch["messages"], batch["response"]):
+    """Format messages+response into a single training string.
+
+    TRL probes ``formatting_func`` on a single example first to determine
+    whether it returns str or list[str], then calls it in either mode.
+    On a single example, ``batch["response"]`` is a str (not list[str])
+    and ``batch["messages"]`` is a list of dicts (one conversation, not
+    list of conversations). We must handle both shapes or zip will
+    silently iterate characters of the response string -> malformed
+    training text. See issue #2.
+    """
+    def _render(msgs, resp):
         msgs = list(msgs)
         msgs.append({"role": "assistant", "content": resp})
-        texts.append(_tokenizer.apply_chat_template(msgs, tokenize=False, add_generation_prompt=False))
-    return texts
+        return _tokenizer.apply_chat_template(
+            msgs, tokenize=False, add_generation_prompt=False
+        )
+
+    if isinstance(batch["response"], str):
+        # single-example shape
+        return _render(batch["messages"], batch["response"])
+    # batched shape: dict of lists
+    return [_render(msgs, resp)
+            for msgs, resp in zip(batch["messages"], batch["response"])]
 
 
 def find_response_template(tokenizer):

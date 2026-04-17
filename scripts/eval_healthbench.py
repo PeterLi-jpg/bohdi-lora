@@ -181,6 +181,8 @@ def main():
 
     all_results = []
     scores = []
+    total_parse_failures = 0
+    total_rubric_items = 0
     for ex in tqdm(examples, desc=tag):
         resp = gen_response(model, tokenizer, ex["prompt"], args.use_bodhi, bodhi_wrapper)
         grade = grade_trace(grader, ex["prompt"], resp, ex["rubrics"])
@@ -188,11 +190,15 @@ def main():
             "prompt_id": ex["prompt_id"], "response": resp,
             "score": grade["overall_score"], "tag_scores": grade["tag_scores"],
             "criteria_results": grade["criteria_results"],
+            "parse_failures": grade["parse_failures"],
         })
         scores.append(grade["overall_score"])
+        total_parse_failures += grade["parse_failures"]
+        total_rubric_items += len(grade["criteria_results"])
 
     brier = compute_brier_score(all_results)
     ece = compute_ece(all_results)
+    parse_fail_rate = (total_parse_failures / total_rubric_items) if total_rubric_items else None
 
     summary = {
         "config": tag, "model": args.model,
@@ -201,7 +207,15 @@ def main():
         "mean": float(np.mean(scores)) if scores else None,
         "std": float(np.std(scores)) if scores else None,
         "median": float(np.median(scores)) if scores else None,
-        "brier": brier, "ece": ece,
+        # NOTE: brier/ece here are NOT proper model-calibration metrics —
+        # the "confidence" used is the evaluator's overall score, not a
+        # model-derived probability. See issue #1. Treat as grader-internal
+        # consistency measures, not calibration.
+        "brier_grader_consistency": brier,
+        "ece_grader_consistency": ece,
+        "grader_parse_failure_rate": parse_fail_rate,
+        "grader_parse_failures_total": total_parse_failures,
+        "grader_rubric_items_total": total_rubric_items,
         "results": all_results,
     }
 
@@ -214,7 +228,11 @@ def main():
     ece_str = f"{ece:.4f}" if ece is not None else "n/a"
     mean_str = f"{summary['mean']:.4f}" if summary['mean'] is not None else "n/a"
     std_str = f"{summary['std']:.4f}" if summary['std'] is not None else "n/a"
-    print(f"\n{tag}: score={mean_str} +/- {std_str}  brier={brier_str}  ece={ece_str}  -> {out}")
+    fail_str = f"{parse_fail_rate*100:.2f}%" if parse_fail_rate is not None else "n/a"
+    print(f"\n{tag}: score={mean_str} +/- {std_str}  "
+          f"brier*={brier_str}  ece*={ece_str}  "
+          f"grader_parse_fail={fail_str}  -> {out}")
+    print("  (* brier/ece measure grader-internal consistency, not model calibration; issue #1)")
 
 
 if __name__ == "__main__":

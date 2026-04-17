@@ -120,6 +120,10 @@ def main():
     parser.add_argument("--max-examples", type=int, default=None)
     parser.add_argument("--resume-from", default=None)
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--force-resume", action="store_true",
+                        help="skip the model/bodhi metadata consistency check on resume "
+                             "(issue #6/7). Only use when you intentionally want to "
+                             "append rows generated with different settings.")
     args = parser.parse_args()
 
     # Greedy decoding is deterministic without a seed, but the BODHI wrapper
@@ -143,14 +147,42 @@ def main():
 
     done_ids = set()
     if args.resume_from and Path(args.resume_from).exists():
+        # Issue #6/7: validate that existing rows were generated with the
+        # same model + bodhi setting. Mixing settings silently corrupts the
+        # training corpus. Refuse to resume on mismatch unless --force-resume.
+        prev_models = set()
+        prev_bodhi = set()
         with open(args.resume_from) as f:
             for line in f:
                 try:
-                    done_ids.add(json.loads(line)["prompt_id"])
+                    row = json.loads(line)
+                    done_ids.add(row["prompt_id"])
+                    if "model" in row:
+                        prev_models.add(row["model"])
+                    if "bodhi" in row:
+                        prev_bodhi.add(row["bodhi"])
                 except (json.JSONDecodeError, KeyError):
                     pass  # skip corrupt lines from interrupted runs
+
+        model_mismatch = prev_models and prev_models != {args.model}
+        bodhi_mismatch = prev_bodhi and prev_bodhi != {args.use_bodhi}
+        if model_mismatch or bodhi_mismatch:
+            msg = (
+                f"resume config mismatch — refusing to append to {args.resume_from}\n"
+                f"  existing rows: model={prev_models or '{unknown}'} "
+                f"bodhi={prev_bodhi or '{unknown}'}\n"
+                f"  this run:      model={{{args.model!r}}} bodhi={{{args.use_bodhi}}}\n"
+                f"  re-running with different settings would silently mix "
+                f"outputs (issue #6/7)\n"
+                f"  if you truly want to append across settings, pass --force-resume"
+            )
+            if not args.force_resume:
+                raise SystemExit(msg)
+            print(f"WARNING: {msg}\n(continuing because --force-resume was passed)")
+
         examples = [ex for ex in examples if ex["prompt_id"] not in done_ids]
-        print(f"Resuming, skipping {len(done_ids)} already done")
+        print(f"Resuming, skipping {len(done_ids)} already done "
+              f"(prev model={prev_models or '?'} bodhi={prev_bodhi or '?'})")
 
     print(f"\nGenerating {len(examples)} traces, bodhi={args.use_bodhi}\n")
     model = LocalModel(args.model)
