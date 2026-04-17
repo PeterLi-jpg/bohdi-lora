@@ -74,7 +74,11 @@ git clone https://github.com/PeterLi-jpg/bohdi-lora.git
 cd bohdi-lora
 export HF_TOKEN=hf_...      # paste yours; gemma-3n-E4B-it is gated
 bash setup.sh
-bash smoke.sh 2>&1 | tee logs/smoke.log
+# Run smoke and write to a log. DO NOT use `bash smoke.sh | tee`: piping
+# to tee makes the pipeline's exit code tee's (always 0), so smoke failures
+# appear to pass. Use redirection or PIPESTATUS instead.
+bash smoke.sh &> logs/smoke.log; echo "smoke exit=$?"
+# (to watch progress from another terminal: tail -f logs/smoke.log)
 
 # --- back on your laptop when done ---
 gcloud compute instances delete $NAME --zone=$ZONE --quiet

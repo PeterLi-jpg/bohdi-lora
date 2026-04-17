@@ -14,7 +14,7 @@ set -euo pipefail
 
 module load miniforge/24.3.0-0
 conda activate bohdi  # change to your env name
-cd "${BOHDI_DIR:-$SLURM_SUBMIT_DIR}"
+cd "${BOHDI_DIR:-${SLURM_SUBMIT_DIR:?ERROR: neither BOHDI_DIR nor SLURM_SUBMIT_DIR is set (needed to find the repo root)}}"
 
 # pick up HF_TOKEN from a local .env if the login shell didn't export it
 [ -f .env ] && source .env
