@@ -1,4 +1,18 @@
-"""LoRA SFT on filtered BOHDI traces."""
+"""LoRA SFT on filtered BOHDI traces.
+
+The training knobs live in a YAML config (see ``configs/*.yaml``). The two
+families worth noting:
+
+- ``model.quantization``: ``null`` (default, full-precision LoRA) or ``"4bit"``
+  for QLoRA. 4-bit mode loads the base model via bitsandbytes NF4 with
+  bf16 compute dtype, then wires PEFT's ``prepare_model_for_kbit_training``.
+  8-bit mode (``"8bit"``) is also supported for large-batch speed runs.
+- ``lora.variant``: ``"standard"`` (default), ``"dora"``, or ``"rslora"``. DoRA
+  requires full-precision weights and will error out if combined with
+  quantization.
+
+Anything unset keeps pre-existing behavior so current configs still work.
+"""
 
 import argparse
 import json
@@ -13,6 +27,9 @@ from trl import SFTTrainer, SFTConfig, DataCollatorForCompletionOnlyLM
 from peft import LoraConfig
 
 DTYPE_MAP = {"bfloat16": torch.bfloat16, "float16": torch.float16, "float32": torch.float32}
+
+# Known LoRA variants we support via PEFT's LoraConfig flags.
+LORA_VARIANTS = ("standard", "dora", "rslora")
 
 _tokenizer = None
 
@@ -92,6 +109,19 @@ def main():
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", required=True)
+    parser.add_argument("--seed", type=int, default=None,
+                        help="override the seed in the YAML config (useful for "
+                             "multi-seed runs where one YAML is reused with "
+                             "different seeds per invocation)")
+    parser.add_argument("--output-dir", default="checkpoints",
+                        help="directory to save checkpoints + best model. "
+                             "The final adapter is always written to "
+                             "<output-dir>/best. Override per seed in "
+                             "multi-seed runs, e.g. checkpoints/seed_42")
+    parser.add_argument("--train-file", default=None,
+                        help="override data.train_file from the YAML config")
+    parser.add_argument("--val-file", default=None,
+                        help="override data.val_file from the YAML config")
     args = parser.parse_args()
 
     with open(args.config) as f:
@@ -102,7 +132,10 @@ def main():
     train_cfg = cfg["training"]
     data_cfg = cfg["data"]
 
-    seed = int(cfg.get("seed", train_cfg.get("seed", 42)))
+    # CLI > YAML precedence for seed, so one YAML can be reused across seeds.
+    seed = args.seed if args.seed is not None else int(
+        cfg.get("seed", train_cfg.get("seed", 42))
+    )
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
@@ -129,10 +162,63 @@ def main():
 
     dtype_str = model_cfg.get("torch_dtype") or "bfloat16"
     dtype = DTYPE_MAP.get(dtype_str, torch.bfloat16)
-    print(f"Loading {model_cfg['name']} ({dtype})...")
+
+    # -------- Optional quantization (QLoRA) -----------------------------------
+    # model.quantization in YAML is null (default, full-precision) or one of
+    # "4bit" / "8bit". The 4bit path matches the original QLoRA paper: NF4
+    # weights with bf16 compute dtype, double-quantized.
+    quant = model_cfg.get("quantization")
+    quant_config = None
+    if quant in ("4bit", "8bit"):
+        # Import lazily so CPU-only / Mac dev boxes without bitsandbytes still
+        # import this file fine when running in full-precision mode.
+        from transformers import BitsAndBytesConfig
+        if quant == "4bit":
+            quant_config = BitsAndBytesConfig(
+                load_in_4bit=True,
+                bnb_4bit_quant_type="nf4",
+                bnb_4bit_compute_dtype=dtype,
+                bnb_4bit_use_double_quant=True,
+            )
+        else:  # 8bit
+            quant_config = BitsAndBytesConfig(load_in_8bit=True)
+        print(f"Loading {model_cfg['name']} ({quant} quantized, compute {dtype})...")
+    elif quant is not None:
+        raise ValueError(
+            f"model.quantization={quant!r} is not recognised. "
+            f"Use null (default), '4bit', or '8bit'."
+        )
+    else:
+        print(f"Loading {model_cfg['name']} ({dtype})...")
+
     model = AutoModelForCausalLM.from_pretrained(
-        model_cfg["name"], torch_dtype=dtype, device_map="auto",
+        model_cfg["name"],
+        torch_dtype=dtype,
+        device_map="auto",
+        quantization_config=quant_config,
     )
+
+    # Quantized weights need gradient checkpointing + input-grad rewiring before
+    # LoRA adapters are attached. PEFT's helper handles both.
+    if quant_config is not None:
+        from peft import prepare_model_for_kbit_training
+        model = prepare_model_for_kbit_training(model)
+
+    # -------- LoRA variant selection ------------------------------------------
+    variant = lora_cfg.get("variant", "standard").lower()
+    if variant not in LORA_VARIANTS:
+        raise ValueError(
+            f"lora.variant={variant!r} not recognised. "
+            f"Use one of {LORA_VARIANTS}."
+        )
+    # DoRA requires non-quantized linear layers (it reads the base weights to
+    # compute direction vs. magnitude). Combining with QLoRA fails silently
+    # or gives meaningless results, so gate it upfront.
+    if variant == "dora" and quant_config is not None:
+        raise ValueError(
+            "DoRA requires full-precision weights but model.quantization is set. "
+            "Either set lora.variant='standard' or model.quantization=null."
+        )
 
     lora_config = LoraConfig(
         r=lora_cfg["r"],
@@ -140,13 +226,20 @@ def main():
         lora_dropout=lora_cfg.get("lora_dropout", 0.05),
         target_modules=lora_cfg["target_modules"],
         task_type=lora_cfg["task_type"],
+        # use_dora / use_rslora are PEFT's opt-in flags for the variants.
+        # Default both False so variant='standard' matches prior behavior.
+        use_dora=(variant == "dora"),
+        use_rslora=(variant == "rslora"),
     )
+    print(f"LoRA variant: {variant}")
 
+    train_file = args.train_file or data_cfg["train_file"]
+    val_file = args.val_file or data_cfg["val_file"]
     ds = {
-        "train": load_sft_jsonl(data_cfg["train_file"]),
-        "validation": load_sft_jsonl(data_cfg["val_file"]),
+        "train": load_sft_jsonl(train_file),
+        "validation": load_sft_jsonl(val_file),
     }
-    print(f"Train: {len(ds['train'])}  Val: {len(ds['validation'])}")
+    print(f"Train ({train_file}): {len(ds['train'])}  Val ({val_file}): {len(ds['validation'])}")
 
     # only compute loss on the assistant response, not on the prompt tokens
     response_template = find_response_template(_tokenizer)
@@ -160,7 +253,7 @@ def main():
     use_bf16 = train_cfg.get("bf16", dtype == torch.bfloat16)
 
     training_args = SFTConfig(
-        output_dir="checkpoints",
+        output_dir=args.output_dir,
         num_train_epochs=train_cfg["num_epochs"],
         per_device_train_batch_size=train_cfg["per_device_train_batch_size"],
         gradient_accumulation_steps=train_cfg["gradient_accumulation_steps"],
@@ -193,9 +286,10 @@ def main():
     )
 
     trainer.train()
-    trainer.save_model("checkpoints/best")
-    _tokenizer.save_pretrained("checkpoints/best")
-    print("saved to checkpoints/best")
+    best_path = f"{args.output_dir.rstrip('/')}/best"
+    trainer.save_model(best_path)
+    _tokenizer.save_pretrained(best_path)
+    print(f"saved to {best_path}")
 
 
 if __name__ == "__main__":

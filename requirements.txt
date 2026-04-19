@@ -14,6 +14,9 @@ rich>=13.0,<15.0
 datasets>=2.18.0,<4.0.0
 accelerate>=0.28.0,<2.0.0
 autoawq>=0.2.0,<0.3.0; sys_platform == "linux"
+# bitsandbytes is only needed when model.quantization is "4bit" or "8bit" (QLoRA).
+# CUDA-only, so gate by platform the same way autoawq is gated.
+bitsandbytes>=0.43,<0.48; sys_platform == "linux"
 numpy>=1.24,<3.0
 pandas>=2.0,<3.0
 tqdm>=4.65

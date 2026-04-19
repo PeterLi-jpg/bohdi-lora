@@ -3,6 +3,9 @@ seed: 42
 model:
   name: google/medgemma-27b-text-it
   torch_dtype: bfloat16
+  # quantization: null   # default, full-precision LoRA
+  # quantization: 4bit   # QLoRA: NF4 weights with bf16 compute, double-quant
+  # quantization: 8bit   # 8-bit quantized (less memory savings than 4bit)
   quantization: null
 
 lora:
@@ -18,6 +21,10 @@ lora:
     - up_proj
     - down_proj
   task_type: CAUSAL_LM
+  # variant: standard    # default, classic LoRA (A@B low-rank update)
+  # variant: dora        # DoRA: decomposed direction + magnitude. Not compatible with 4bit/8bit.
+  # variant: rslora      # rsLoRA: alpha/sqrt(r) scaling, better at higher r.
+  variant: standard
 
 training:
   num_epochs: 3
