@@ -47,7 +47,7 @@ python scripts/generate_traces.py \
     --datasets healthbench_hard \
     --output data/sft/smoke/raw_traces.jsonl \
     --use-bodhi \
-    --max-examples $N_EXAMPLES
+    --max-examples "$N_EXAMPLES"
 
 echo "--- 3/4: grade and filter (threshold lowered so nothing is dropped) ---"
 python scripts/filter_traces.py \
@@ -68,7 +68,7 @@ python scripts/eval_healthbench.py \
     --sample-ids data/raw/hard_200_sample_ids.json \
     --grader-model "$GRADER" \
     --output eval/smoke/lora.json \
-    --max-examples $N_EXAMPLES
+    --max-examples "$N_EXAMPLES"
 
 echo "--- 4c/4: U-shape stratification (tertiles on holdout only since n=$N_EXAMPLES) ---"
 python scripts/eval_ushape.py \

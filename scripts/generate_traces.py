@@ -55,12 +55,37 @@ def load_multiple_datasets(names):
     return all_ex
 
 
-def load_exclude_ids(path):
-    with open(path) as f:
-        data = json.load(f)
-    if isinstance(data, dict):
-        data = data["prompt_ids"]
-    return set(data)
+def load_exclude_ids(paths):
+    """Collect prompt_ids to exclude, from one or more files.
+
+    Accepts:
+      - .json  containing a list of ids, or {"prompt_ids": [...]}
+      - .jsonl containing one HealthBench example per line (reads
+        ``prompt_id`` from each). Useful for excluding an entire dataset,
+        e.g. ``data/raw/healthbench_hard.jsonl`` to drop all 1000 Hard
+        prompts for the HealthBench-only generalization experiment.
+
+    Accepts a string (one path) or a list of paths.
+    """
+    if isinstance(paths, str):
+        paths = [paths]
+    ids = set()
+    for path in paths:
+        if path.endswith(".jsonl"):
+            with open(path) as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    ex = json.loads(line)
+                    ids.add(ex["prompt_id"])
+        else:
+            with open(path) as f:
+                data = json.load(f)
+            if isinstance(data, dict):
+                data = data["prompt_ids"]
+            ids.update(data)
+    return ids
 
 
 class LocalModel:
@@ -114,7 +139,13 @@ def main():
     parser.add_argument("--model", default="google/medgemma-27b-text-it")
     parser.add_argument("--datasets", nargs="+", default=["healthbench_hard", "healthbench"],
                         choices=list(DATASET_URLS.keys()))
-    parser.add_argument("--exclude-ids", default=None)
+    parser.add_argument("--exclude-ids", nargs="+", default=None,
+                        help="one or more files listing prompt_ids to skip. "
+                             "Accepts .json (list or {prompt_ids: [...]}) and "
+                             ".jsonl (reads prompt_id from each row). For the "
+                             "HealthBench-only generalization experiment, pass "
+                             "data/raw/healthbench_hard.jsonl here to drop all "
+                             "1000 Hard prompts from training.")
     parser.add_argument("--output", required=True)
     parser.add_argument("--use-bodhi", action="store_true")
     parser.add_argument("--max-examples", type=int, default=None)
