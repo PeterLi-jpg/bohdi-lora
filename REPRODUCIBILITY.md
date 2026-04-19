@@ -227,6 +227,71 @@ python scripts/plot_ushape.py \
     --n-bins 10 --out-dir eval/figures
 ```
 
+### Bootstrap 95% CIs
+
+`eval_ushape.py --bootstrap 1000` resamples the 200-prompt holdout 1000 times with replacement and attaches a 95% CI to every mean and fail rate reported, for overall + per-tier + per-theme. The CIs render as shaded bands on line plots and as error bars on the per-theme bar chart. Seed with `--bootstrap-seed` so CIs are reproducible (default 42).
+
+```bash
+python scripts/eval_ushape.py \
+    --eval-jsons eval/*.json \
+    --healthbench data/raw/healthbench_hard.jsonl data/raw/healthbench.jsonl \
+    --bootstrap 1000 \
+    --output eval/ushape.json
+```
+
+## 5c. Multi-seed variance (optional but recommended)
+
+For variance bars on the training step, `scripts/run_multi_seed.sh` re-runs `filter → train → eval` N times with different seeds, reusing the single raw-traces file from stage 1. Trace generation is the expensive stage, so this costs roughly `N * (filter + train + eval)` hours, not `N * full pipeline`.
+
+```bash
+# default: seeds 42 7 13 99 101
+bash scripts/run_multi_seed.sh
+
+# override:
+SEEDS="42 7 13 99 101 1 2 3 4 5" bash scripts/run_multi_seed.sh
+```
+
+Aggregate across seeds into `eval/multi_seed_summary.json`:
+
+```bash
+python scripts/aggregate_seeds.py \
+    --seed-dirs eval/seed_* \
+    --healthbench data/raw/healthbench_hard.jsonl data/raw/healthbench.jsonl \
+    --output eval/multi_seed_summary.json
+```
+
+Reports across-seed mean ± std per config per metric. Percentile CIs added automatically when `N >= 5`.
+
+## 5d. HealthBench-only generalization experiment
+
+Tests whether training without any HealthBench Hard prompts still transfers to the Hard holdout. First verify the splits don't overlap:
+
+```bash
+python scripts/check_dataset_overlap.py
+```
+
+HealthBench Hard is a strict subset of HealthBench full, so to exclude all Hard prompts from training (not just the 200 eval prompts), pass both files to `--exclude-ids`:
+
+```bash
+python scripts/generate_traces.py \
+    --model google/medgemma-27b-text-it \
+    --datasets healthbench \
+    --exclude-ids data/raw/healthbench_hard.jsonl data/raw/hard_200_sample_ids.json \
+    --output data/sft/raw_traces_healthbench_only.jsonl \
+    --use-bodhi
+```
+
+Then run filter / train / eval as usual against this trace file.
+
+## 5e. Optional: QLoRA, DoRA, rsLoRA
+
+`configs/lora_medgemma27b.yaml` accepts:
+
+- `model.quantization`: `null` (default), `4bit` (QLoRA, NF4 + bf16 compute), or `8bit`
+- `lora.variant`: `standard` (default), `dora`, or `rslora`
+
+Defaults match the existing pipeline, so current configs behave identically. QLoRA requires `bitsandbytes`, which is Linux/CUDA-only (already platform-gated in `requirements.txt`). DoRA is incompatible with quantization and will error out if combined.
+
 ## 6. Reproducibility guarantees
 
 **Deterministic under the same hardware + software**:
@@ -246,7 +311,7 @@ If you need bit-exact reproducibility, lock: GPU model, CUDA version, PyTorch ve
 | Symptom | Likely cause | Fix |
 |---|---|---|
 | `401 Unauthorized` on HF | `HF_TOKEN` unset or missing access | Accept terms on HF model page, re-export token |
-| `CUDA out of memory` on train | 27B at bf16 is ~55 GB just for weights | Use a >=80 GB GPU, or add QLoRA (not currently supported) |
+| `CUDA out of memory` on train | 27B at bf16 is ~55 GB just for weights | Set `model.quantization: 4bit` in the config (QLoRA, requires `bitsandbytes`) or use a ≥80 GB GPU |
 | `Could not auto-detect response template` | Tokenizer's chat template is non-standard | Printed suffix shows the last 50 chars — extend `find_response_template` in `scripts/train_lora.py` if needed |
 | Slurm job runs in wrong dir | `SLURM_SUBMIT_DIR` not set (manual `sbatch` from unusual location) | Set `export BOHDI_DIR=/path/to/bohdi-lora` before `run_all.sh` |
 | `autoawq` install fails on Mac | Expected — no CUDA wheel | Platform marker skips it; smoke test uses ungated Qwen 0.5B grader |

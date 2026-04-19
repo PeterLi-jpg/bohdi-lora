@@ -38,6 +38,31 @@ Score formula is `sum_of_met_points / sum_of_positive_points`. Negative rubric i
 
 Needs a call on which normalization to use, and a re-derivation of the filter threshold.
 
+## Infrastructure for reporting and robustness
+
+These aren't issues per se, but directly support the reviewer concerns that drive #1, #3, #4 and the paper overall.
+
+### Bootstrap 95% CIs on every reported metric
+`scripts/eval_ushape.py --bootstrap 1000` nonparametrically resamples the 200-prompt holdout 1000 times and reports 2.5th / 97.5th percentile CIs for mean and fail rate, stratified by tier and theme. Deterministic via `--bootstrap-seed` (default 42). `scripts/plot_ushape.py` renders the CIs as shaded bands and error bars.
+
+### Multi-seed variance
+`scripts/run_multi_seed.sh` reuses one set of generated traces and varies seed across filter split, LoRA init, and training order. `scripts/aggregate_seeds.py` combines per-seed eval JSONs into across-seed mean ± std (plus percentile CIs when `N >= 5`). Default seeds: `42 7 13 99 101`. Override with `SEEDS="..." bash scripts/run_multi_seed.sh`.
+
+### HealthBench-only generalization experiment
+Confirmed via `scripts/check_dataset_overlap.py` that HealthBench Hard is a strict subset of HealthBench full. To train on HealthBench without any Hard leakage, pass both the eval holdout and the full Hard JSONL to `--exclude-ids`:
+
+```
+python scripts/generate_traces.py \
+    --datasets healthbench \
+    --exclude-ids data/raw/healthbench_hard.jsonl data/raw/hard_200_sample_ids.json \
+    ...
+```
+
+This produces ~4,000 training prompts from the Full set, with the 1,000 Hard prompts fully excluded. Compare against the main run (~4,800 prompts from Full + Hard minus the 200 eval).
+
+### Optional QLoRA / DoRA / rsLoRA
+`configs/*.yaml` now accept `model.quantization` in `{null, "4bit", "8bit"}` and `lora.variant` in `{"standard", "dora", "rslora"}`. DoRA is incompatible with quantization and is guarded with an upfront error. Existing configs leave both on defaults, so current runs behave identically.
+
 ## Process note
 
-Fixes landing in `main` happen behind commits signed by the original authors. Deferred items should be resolved in a short methodology write-up before the paper eval is considered final.
+Fixes landing in `main` happen behind commits signed by the original authors. Deferred items (#1, #3, #4) should be resolved in a short methodology write-up before the paper eval is considered final.
