@@ -68,23 +68,51 @@ def ordered_configs(names):
 
 # -------- Tier plots (from summary json) --------
 
+def _ci_bounds(stats, metric):
+    """Return (low, high) for the CI key associated with metric, or (None, None)."""
+    ci_key = f"{metric}_ci"
+    ci = stats.get(ci_key)
+    if ci and len(ci) == 2:
+        return ci[0], ci[1]
+    return None, None
+
+
 def plot_u_curve(summary, out_path, metric="mean", ylabel=None, title=None):
-    """3-tier line plot. Straight-segment 'U' because we only have 3 points."""
+    """3-tier line plot with 95% CI band (if bootstrap was run).
+
+    With bootstrap CIs: shaded band between mean_ci lower and upper bounds.
+    Without CIs: fall back to plain line + markers (same as before).
+    """
     configs = ordered_configs_from_summary(summary)
     fig, ax = plt.subplots(figsize=(8, 5))
     for cfg in configs:
         tier_stats = summary["configs"][cfg]["by_tier"]
-        ys = []
+        ys, ci_lo, ci_hi = [], [], []
         for t in TIER_ORDER:
             s = tier_stats.get(t, {})
             ys.append(s.get(metric))
+            lo, hi = _ci_bounds(s, metric)
+            ci_lo.append(lo)
+            ci_hi.append(hi)
         if all(y is None for y in ys):
             continue
-        ys_plot = [y if y is not None else float("nan") for y in ys]
-        ax.plot(TIER_ORDER, ys_plot,
-                marker="o", linewidth=2.5, markersize=9,
-                color=CONFIG_COLORS.get(cfg, None),
-                label=CONFIG_LABELS.get(cfg, cfg))
+
+        ys_plot = np.array([y if y is not None else np.nan for y in ys])
+        color = CONFIG_COLORS.get(cfg, None)
+        label = CONFIG_LABELS.get(cfg, cfg)
+
+        # Main line
+        ax.plot(TIER_ORDER, ys_plot, marker="o", linewidth=2.5, markersize=9,
+                color=color, label=label)
+
+        # CI band (only if every tier has CIs; partial bands are misleading)
+        if all(lo is not None and hi is not None for lo, hi in zip(ci_lo, ci_hi)):
+            ax.fill_between(
+                range(len(TIER_ORDER)),
+                np.array(ci_lo), np.array(ci_hi),
+                color=color, alpha=0.18, linewidth=0,
+            )
+
     ax.set_xlabel("Difficulty tier (rubric positive-point tertiles)", fontsize=11)
     ax.set_ylabel(ylabel or metric, fontsize=11)
     ax.set_title(title or f"{metric} across difficulty tiers", fontsize=12)
@@ -118,14 +146,30 @@ def plot_theme_fails(summary, out_path,
     fig, ax = plt.subplots(figsize=(max(10, 1.5 * n_themes), 5.5))
     xs = range(n_themes)
     for i, cfg in enumerate(configs):
-        ys = []
+        ys, errs_lo, errs_hi = [], [], []
         for theme in themes:
             s = summary["configs"][cfg]["by_theme"].get(theme, {})
-            ys.append(s.get("fail_rate") if s.get("n") else 0.0)
+            if s.get("n"):
+                ys.append(s["fail_rate"])
+                lo, hi = _ci_bounds(s, "fail_rate")
+                if lo is not None and hi is not None:
+                    errs_lo.append(s["fail_rate"] - lo)
+                    errs_hi.append(hi - s["fail_rate"])
+                else:
+                    errs_lo.append(0.0)
+                    errs_hi.append(0.0)
+            else:
+                ys.append(0.0)
+                errs_lo.append(0.0)
+                errs_hi.append(0.0)
         offsets = [x + (i - (n_configs - 1) / 2) * width for x in xs]
+        has_ci = any(l > 0 or h > 0 for l, h in zip(errs_lo, errs_hi))
         ax.bar(offsets, ys, width,
                color=CONFIG_COLORS.get(cfg, None),
-               label=CONFIG_LABELS.get(cfg, cfg))
+               label=CONFIG_LABELS.get(cfg, cfg),
+               yerr=[errs_lo, errs_hi] if has_ci else None,
+               error_kw={"ecolor": "black", "capsize": 2, "elinewidth": 0.8,
+                         "alpha": 0.6})
 
     ax.set_xticks(list(xs))
     ax.set_xticklabels(themes, rotation=30, ha="right", fontsize=9)
