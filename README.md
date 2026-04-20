@@ -16,12 +16,15 @@ HealthBench Hard (1000 examples) + HealthBench Full (5000 examples) combined = 5
 
 ## Quickstart
 
-1. `bash setup.sh` — one-time install and data download
-2. `export HF_TOKEN=hf_...` — gated model access
-3. `bash smoke.sh` — end-to-end test with `gemma-3n-E4B-it` (<10 min, catches bugs)
-4. `bash run_all.sh` — full pipeline on slurm
+```bash
+git clone https://github.com/PeterLi-jpg/bohdi-lora.git
+cd bohdi-lora
+export HF_TOKEN=hf_...
+bash setup.sh
+bash run_all.sh
+```
 
-See [REPRODUCIBILITY.md](REPRODUCIBILITY.md) for step-by-step instructions, expected outputs, and troubleshooting. [KNOWN_ISSUES.md](KNOWN_ISSUES.md) tracks open methodological concerns that need discussion before the paper eval is final.
+`setup.sh` installs dependencies, creates the working directories, and downloads the HealthBench datasets. `run_all.sh` then submits the full slurm dependency chain.
 
 ## Pipeline
 
@@ -76,16 +79,14 @@ Per-tier failure rates stratified by rubric complexity (easy/medium/hard) and by
 
 ```
 bohdi-lora/
-├── configs/          # Training hyperparameters (full + smoke)
+├── configs/          # Training hyperparameters
 ├── data/
 │   ├── raw/          # HealthBench eval IDs
 │   └── sft/          # Generated and filtered training data
 ├── eval/             # Evaluation outputs
 ├── scripts/          # Generation, filtering, training, and eval scripts
 ├── slurm/            # SBATCH job scripts
-├── smoke.sh          # End-to-end smoke test (gemma-2-2b-it)
 ├── run_all.sh        # Full pipeline dependency chain (slurm)
-├── REPRODUCIBILITY.md
 └── requirements.txt
 ```
 
