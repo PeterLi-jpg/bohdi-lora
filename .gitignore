@@ -7,7 +7,10 @@ build/
 data/raw/*.jsonl
 data/sft/*.jsonl
 data/sft/smoke/
+data/sft/figures/
+eval/*.json
 eval/smoke/
+eval/figures/
 
 checkpoints/
 *.bin
