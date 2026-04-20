@@ -23,6 +23,10 @@ HealthBench Hard (1000 examples) + HealthBench Full (5000 examples) combined = 5
 
 See [REPRODUCIBILITY.md](REPRODUCIBILITY.md) for step-by-step instructions, expected outputs, and troubleshooting. [KNOWN_ISSUES.md](KNOWN_ISSUES.md) tracks open methodological concerns that need discussion before the paper eval is final.
 
+## Hygiene
+
+Run `bash scripts/check_no_secrets.sh` before opening a PR if you touched config or environment files. Generated outputs under `logs/`, `checkpoints/`, `eval/`, `data/sft/`, and `results/` are intentionally ignored.
+
 ## Pipeline
 
 ```bash
