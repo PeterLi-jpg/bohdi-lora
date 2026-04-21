@@ -21,10 +21,12 @@ git clone https://github.com/PeterLi-jpg/bohdi-lora.git
 cd bohdi-lora
 export HF_TOKEN=hf_...
 bash setup.sh
-bash run_all.sh
+bash smoke.sh
 ```
 
-`setup.sh` installs dependencies, creates the working directories, and downloads the HealthBench datasets. `run_all.sh` then submits the full slurm dependency chain.
+`setup.sh` installs dependencies, creates the working directories, and downloads the HealthBench datasets. `smoke.sh` is the documented sub-10-minute sanity check before submitting the full cluster run with `bash run_all.sh`.
+
+See [REPRODUCIBILITY.md](REPRODUCIBILITY.md) for the full pipeline, cluster setup, and ablation recipes. [KNOWN_ISSUES.md](KNOWN_ISSUES.md) tracks the open methodological and implementation follow-ups.
 
 ## Pipeline
 
@@ -86,7 +88,10 @@ bohdi-lora/
 ├── eval/             # Evaluation outputs
 ├── scripts/          # Generation, filtering, training, and eval scripts
 ├── slurm/            # SBATCH job scripts
+├── smoke.sh          # End-to-end smoke test
 ├── run_all.sh        # Full pipeline dependency chain (slurm)
+├── REPRODUCIBILITY.md
+├── KNOWN_ISSUES.md
 └── requirements.txt
 ```
 
