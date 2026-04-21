@@ -41,10 +41,6 @@ MODEL="google/medgemma-27b-text-it"
 IDS="data/raw/hard_200_sample_ids.json"
 LORA="$RUN_DIR/checkpoints/best"
 
-python scripts/plot_training.py \
-    --trainer-state $LORA/trainer_state.json \
-    --output eval/figures/training_loss.png
-
 echo "--- base, no wrapper ---"
 python scripts/eval_healthbench.py --model "$MODEL" --sample-ids "$IDS" --output "$RUN_DIR/eval/base_no_wrapper.json"
 
@@ -70,5 +66,14 @@ python scripts/plot_ushape.py \
     --healthbench data/raw/healthbench_hard.jsonl data/raw/healthbench.jsonl \
     --n-bins 10 \
     --out-dir "$RUN_DIR/figures"
+
+if [ -f "$LORA/trainer_state.json" ]; then
+    echo "--- plot training curves ---"
+    python scripts/plot_training.py \
+        --trainer-state "$LORA/trainer_state.json" \
+        --output "$RUN_DIR/figures/training_loss.png"
+else
+    echo "--- skipping training curve plot: $LORA/trainer_state.json not found ---"
+fi
 
 echo "$(date) | done"
