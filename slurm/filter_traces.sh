@@ -37,7 +37,7 @@ python scripts/download_data.py
 
 python scripts/filter_traces.py \
     --input data/sft/raw_traces.jsonl \
-    --healthbench-data data/raw/healthbench_hard.jsonl data/raw/healthbench.jsonl \
+    --healthbench-data data/raw/healthbench_hard.jsonl data/raw/healthbench.jsonl data/raw/healthbench_consensus.jsonl \
     --grader-model Qwen/Qwen2.5-14B-Instruct-AWQ \
     --output-dir data/sft/ \
     --min-score 0.4 \

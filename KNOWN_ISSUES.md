@@ -38,6 +38,9 @@ Score formula is `sum_of_met_points / sum_of_positive_points`. Negative rubric i
 
 Needs a call on which normalization to use, and a re-derivation of the filter threshold.
 
+### [#10] HealthBench Consensus inclusion — FIXED
+`healthbench_consensus.jsonl` is now treated as an additional training-time input. `scripts/check_dataset_overlap.py` reports how Consensus overlaps with Full and Hard so the choice is explicit. The current policy is: include Consensus in stage 1 because it is HealthBench-format supervision with higher physician agreement, and the generation loader deduplicates repeated `prompt_id`s across datasets.
+
 ## Infrastructure for reporting and robustness
 
 These aren't issues per se, but directly support the reviewer concerns that drive #1, #3, #4 and the paper overall.
