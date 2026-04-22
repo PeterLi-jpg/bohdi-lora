@@ -174,8 +174,13 @@ def grade_trace(grader, prompt_messages, response_text, rubric_items, max_retrie
         })
 
     total_pos = sum(r["points"] for r in results if r["points"] > 0)
+    total_neg = sum(r["points"] for r in results if r["points"] < 0)
     earned = sum(r["points"] for r in results if r["criteria_met"])
-    score = earned / total_pos if total_pos > 0 else 0.0
+    positive_score = earned / total_pos if total_pos > 0 else 0.0
+    score_range = total_pos - total_neg
+    normalized_score = (
+        (earned - total_neg) / score_range if score_range > 0 else 0.0
+    )
 
     # per-tag breakdown
     tag_items = defaultdict(list)
@@ -189,7 +194,12 @@ def grade_trace(grader, prompt_messages, response_text, rubric_items, max_retrie
             tag_scores[tag] = sum(r["points"] for r in items if r["criteria_met"]) / pos
 
     return {
-        "overall_score": score,
+        "overall_score": normalized_score,
+        "positive_score": positive_score,
+        "normalized_score": normalized_score,
+        "positive_points": total_pos,
+        "negative_points": total_neg,
+        "earned_points": earned,
         "criteria_results": results,
         "tag_scores": tag_scores,
         "parse_failures": parse_failures,
@@ -269,12 +279,12 @@ def main():
                 f.write(json.dumps(item) + "\n")
         print(f"All graded traces -> {p}")
 
-    kept = [t for t in graded if t["grade"]["overall_score"] >= args.min_score]
+    kept = [t for t in graded if t["grade"]["normalized_score"] >= args.min_score]
     print(f"Kept {len(kept)}/{len(graded)} (threshold={args.min_score})")
 
-    scores = [t["grade"]["overall_score"] for t in graded]
+    scores = [t["grade"]["normalized_score"] for t in graded]
     if scores:
-        print(f"Scores: min={min(scores):.3f} max={max(scores):.3f} "
+        print(f"Normalized scores: min={min(scores):.3f} max={max(scores):.3f} "
               f"mean={sum(scores)/len(scores):.3f} median={statistics.median(scores):.3f}")
 
     random.shuffle(kept)

@@ -28,15 +28,12 @@ The implementation uses the evaluator's rubric score as "confidence" and compare
 
 Needs team agreement before any ablation is blessed as final.
 
-### [#4] Inconsistent filtering-score normalization — OPEN
-Score formula is `sum_of_met_points / sum_of_positive_points`. Negative rubric items contribute to the numerator as penalties but not to the denominator, so a fixed `--min-score 0.4` threshold is not comparable across prompts with different penalty structure. Data selection is therefore partially a function of rubric geometry, not just response quality.
+### [#4] Inconsistent filtering-score normalization — FIXED
+Filtering and eval now use a normalized rubric score that accounts for both the positive ceiling and the negative penalty floor:
 
-**Options to consider**:
-- Normalize by `sum(|points|)` so the score lives on a symmetric scale
-- Apply per-prompt z-scoring before the filter
-- Require a minimum fraction of positive items met, independent of points
+`normalized_score = (earned_points - negative_points) / (positive_points - negative_points)`
 
-Needs a call on which normalization to use, and a re-derivation of the filter threshold.
+This makes a fixed threshold such as `--min-score 0.4` comparable across prompts with different penalty structure. The previous positive-only score is still emitted as `positive_score` for analysis, but it is no longer the default selection metric.
 
 ## Infrastructure for reporting and robustness
 

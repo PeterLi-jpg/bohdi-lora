@@ -247,11 +247,13 @@ def main():
         grade = grade_trace(grader, ex["prompt"], resp, ex["rubrics"])
         all_results.append({
             "prompt_id": ex["prompt_id"], "response": resp,
-            "score": grade["overall_score"], "tag_scores": grade["tag_scores"],
+            "score": grade["normalized_score"],
+            "positive_score": grade["positive_score"],
+            "tag_scores": grade["tag_scores"],
             "criteria_results": grade["criteria_results"],
             "parse_failures": grade["parse_failures"],
         })
-        scores.append(grade["overall_score"])
+        scores.append(grade["normalized_score"])
         total_parse_failures += grade["parse_failures"]
         total_rubric_items += len(grade["criteria_results"])
 
@@ -267,6 +269,7 @@ def main():
         "mean": float(np.mean(scores)) if scores else None,
         "std": float(np.std(scores)) if scores else None,
         "median": float(np.median(scores)) if scores else None,
+        "score_metric": "normalized_score",
         # NOTE: brier/ece here are NOT proper model-calibration metrics —
         # the "confidence" used is the evaluator's overall score, not a
         # model-derived probability. See issue #1. Treat as grader-internal
