@@ -114,6 +114,21 @@ def find_response_template(tokenizer):
     )
 
 
+def latest_checkpoint(output_dir):
+    root = Path(output_dir)
+    checkpoints = []
+    for path in root.glob("checkpoint-*"):
+        try:
+            step = int(path.name.split("-", 1)[1])
+        except (IndexError, ValueError):
+            continue
+        checkpoints.append((step, path))
+    if not checkpoints:
+        return None
+    checkpoints.sort()
+    return str(checkpoints[-1][1])
+
+
 def main():
     global _tokenizer
 
@@ -304,7 +319,9 @@ def main():
         lr_scheduler_type=train_cfg["lr_scheduler_type"],
         logging_steps=train_cfg["logging_steps"],
         save_strategy=train_cfg["save_strategy"],
+        save_steps=train_cfg.get("save_steps"),
         eval_strategy=train_cfg["eval_strategy"],
+        eval_steps=train_cfg.get("eval_steps"),
         bf16=use_bf16,
         seed=seed,
         data_seed=seed,
@@ -327,7 +344,10 @@ def main():
         formatting_func=format_example,
     )
 
-    trainer.train()
+    resume_path = latest_checkpoint(args.output_dir)
+    if resume_path:
+        print(f"Resuming from checkpoint: {resume_path}")
+    trainer.train(resume_from_checkpoint=resume_path)
     trainer.save_state()
     best_path = f"{args.output_dir.rstrip('/')}/best"
     trainer.save_model(best_path)
