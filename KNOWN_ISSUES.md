@@ -17,8 +17,12 @@ TRL probes `formatting_func` on a single example first to decide whether it retu
 
 ## Documented, deferred to discussion
 
-### [#1] Brier / ECE do not measure model calibration — PARTIALLY ADDRESSED
-The implementation uses the evaluator's rubric score as "confidence" and compares it against rubric outcomes from the same grading pass. That is grader-internal consistency, not model calibration. **Action taken**: the fields in eval output are renamed to `brier_grader_consistency` / `ece_grader_consistency` with an in-file comment, and the console summary now flags them (`brier*`/`ece*` with a footnote). **Still open for discussion**: whether to remove these metrics entirely or replace them with a model-derived confidence signal (logprob-based, explicit confidence output, or similar).
+### [#1] Brier / ECE do not measure model calibration — FIXED
+`scripts/eval_healthbench.py` now records both:
+- `brier_grader_consistency` / `ece_grader_consistency` for the old evaluator-derived proxy
+- `brier_model_calibration` / `ece_model_calibration` from a model-derived confidence signal
+
+The model-derived confidence is the exponentiated mean token log-prob of the generated assistant response under the evaluated model. This keeps the confidence source on the model side rather than in the grader.
 
 ### [#3] Same grader for filtering and final evaluation — OPEN
 `filter_traces.py` and `eval_healthbench.py` default to the same grader family (`Qwen/Qwen2.5-14B-Instruct-AWQ`). This couples training-data selection to the evaluator used for claimed gains. **Mitigation paths**:
