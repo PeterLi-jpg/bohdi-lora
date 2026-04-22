@@ -29,6 +29,7 @@ export HF_TOKEN
 RUN_DIR="${1:-${RUN_DIR:-results/manual_run}}"
 
 mkdir -p "$RUN_DIR/eval" "$RUN_DIR/figures"
+mkdir -p "$RUN_DIR/eval/cross_grader"
 
 echo "$(date) | starting eval on $(hostname)"
 nvidia-smi --list-gpus
@@ -43,16 +44,21 @@ IDS="data/raw/hard_200_sample_ids.json"
 LORA="$RUN_DIR/checkpoints/best"
 
 echo "--- base, no wrapper ---"
-python scripts/eval_healthbench.py --model "$MODEL" --sample-ids "$IDS" --output "$RUN_DIR/eval/base_no_wrapper.json"
+python scripts/eval_healthbench.py --model "$MODEL" --sample-ids "$IDS" --grader-model mistralai/Mistral-7B-Instruct-v0.3 --secondary-grader-model Qwen/Qwen2.5-14B-Instruct --output "$RUN_DIR/eval/cross_grader/base_no_wrapper.json"
 
 echo "--- base + bodhi ---"
-python scripts/eval_healthbench.py --model "$MODEL" --use-bodhi --sample-ids "$IDS" --output "$RUN_DIR/eval/base_bodhi.json"
+python scripts/eval_healthbench.py --model "$MODEL" --use-bodhi --sample-ids "$IDS" --grader-model mistralai/Mistral-7B-Instruct-v0.3 --secondary-grader-model Qwen/Qwen2.5-14B-Instruct --output "$RUN_DIR/eval/cross_grader/base_bodhi.json"
 
 echo "--- lora, no wrapper ---"
-python scripts/eval_healthbench.py --model "$MODEL" --lora-path "$LORA" --sample-ids "$IDS" --output "$RUN_DIR/eval/lora_no_wrapper.json"
+python scripts/eval_healthbench.py --model "$MODEL" --lora-path "$LORA" --sample-ids "$IDS" --grader-model mistralai/Mistral-7B-Instruct-v0.3 --secondary-grader-model Qwen/Qwen2.5-14B-Instruct --output "$RUN_DIR/eval/cross_grader/lora_no_wrapper.json"
 
 echo "--- lora + bodhi ---"
-python scripts/eval_healthbench.py --model "$MODEL" --lora-path "$LORA" --use-bodhi --sample-ids "$IDS" --output "$RUN_DIR/eval/lora_bodhi.json"
+python scripts/eval_healthbench.py --model "$MODEL" --lora-path "$LORA" --use-bodhi --sample-ids "$IDS" --grader-model mistralai/Mistral-7B-Instruct-v0.3 --secondary-grader-model Qwen/Qwen2.5-14B-Instruct --output "$RUN_DIR/eval/cross_grader/lora_bodhi.json"
+
+cp "$RUN_DIR/eval/cross_grader/base_no_wrapper.json" "$RUN_DIR/eval/base_no_wrapper.json"
+cp "$RUN_DIR/eval/cross_grader/base_bodhi.json" "$RUN_DIR/eval/base_bodhi.json"
+cp "$RUN_DIR/eval/cross_grader/lora_no_wrapper.json" "$RUN_DIR/eval/lora_no_wrapper.json"
+cp "$RUN_DIR/eval/cross_grader/lora_bodhi.json" "$RUN_DIR/eval/lora_bodhi.json"
 
 echo "--- U-shape stratified analysis ---"
 python scripts/eval_ushape.py \

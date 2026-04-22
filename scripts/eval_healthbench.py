@@ -4,7 +4,6 @@ import argparse
 from datetime import datetime, timezone
 from importlib import metadata
 import json
-import math
 import random
 import subprocess
 import urllib.request
@@ -213,7 +212,8 @@ def main():
     parser.add_argument("--lora-path", default=None)
     parser.add_argument("--use-bodhi", action="store_true")
     parser.add_argument("--sample-ids", required=True)
-    parser.add_argument("--grader-model", default="Qwen/Qwen2.5-14B-Instruct")
+    parser.add_argument("--grader-model", default="mistralai/Mistral-7B-Instruct-v0.3")
+    parser.add_argument("--secondary-grader-model", action="append", default=[])
     parser.add_argument("--output", required=True)
     parser.add_argument("--max-examples", type=int, default=None)
     parser.add_argument("--seed", type=int, default=42)
@@ -231,52 +231,69 @@ def main():
         examples = examples[:args.max_examples]
 
     model, tokenizer, device = load_model(args.model, args.lora_path)
-    grader = LocalGrader(args.grader_model)
-
     bodhi_wrapper = make_bodhi_wrapper(model, tokenizer, device) if args.use_bodhi else None
 
     tag = f"{'lora' if args.lora_path else 'base'}_{'bodhi' if args.use_bodhi else 'no_wrapper'}"
     print(f"\nEval: {tag}  ({len(examples)} examples)\n")
 
-    all_results = []
-    scores = []
-    total_parse_failures = 0
-    total_rubric_items = 0
+    generated = []
     for ex in tqdm(examples, desc=tag):
         resp = gen_response(model, tokenizer, device, ex["prompt"], args.use_bodhi, bodhi_wrapper)
-        grade = grade_trace(grader, ex["prompt"], resp, ex["rubrics"])
-        all_results.append({
-            "prompt_id": ex["prompt_id"], "response": resp,
-            "score": grade["overall_score"], "tag_scores": grade["tag_scores"],
-            "criteria_results": grade["criteria_results"],
-            "parse_failures": grade["parse_failures"],
-        })
-        scores.append(grade["overall_score"])
-        total_parse_failures += grade["parse_failures"]
-        total_rubric_items += len(grade["criteria_results"])
+        generated.append({"prompt_id": ex["prompt_id"], "prompt": ex["prompt"], "rubrics": ex["rubrics"], "response": resp})
 
-    brier = compute_brier_score(all_results)
-    ece = compute_ece(all_results)
-    parse_fail_rate = (total_parse_failures / total_rubric_items) if total_rubric_items else None
+    grader_runs = []
+    for idx, grader_model in enumerate([args.grader_model] + list(args.secondary_grader_model)):
+        grader = LocalGrader(grader_model)
+        all_results = []
+        scores = []
+        total_parse_failures = 0
+        total_rubric_items = 0
+        for item in tqdm(generated, desc=f"{tag} grade[{idx + 1}]"):
+            grade = grade_trace(grader, item["prompt"], item["response"], item["rubrics"])
+            all_results.append({
+                "prompt_id": item["prompt_id"], "response": item["response"],
+                "score": grade["overall_score"],
+                "positive_score": grade.get("positive_score"),
+                "tag_scores": grade["tag_scores"],
+                "criteria_results": grade["criteria_results"],
+                "parse_failures": grade["parse_failures"],
+            })
+            scores.append(grade["overall_score"])
+            total_parse_failures += grade["parse_failures"]
+            total_rubric_items += len(grade["criteria_results"])
+
+        brier = compute_brier_score(all_results)
+        ece = compute_ece(all_results)
+        parse_fail_rate = (total_parse_failures / total_rubric_items) if total_rubric_items else None
+        grader_runs.append({
+            "role": "primary" if idx == 0 else "secondary",
+            "grader_model": grader_model,
+            "mean": float(np.mean(scores)) if scores else None,
+            "std": float(np.std(scores)) if scores else None,
+            "median": float(np.median(scores)) if scores else None,
+            "brier_grader_consistency": brier,
+            "ece_grader_consistency": ece,
+            "grader_parse_failure_rate": parse_fail_rate,
+            "grader_parse_failures_total": total_parse_failures,
+            "grader_rubric_items_total": total_rubric_items,
+            "results": all_results,
+        })
 
     summary = {
         "config": tag, "model": args.model,
         "lora_path": args.lora_path, "use_bodhi": args.use_bodhi,
         "n_examples": len(examples),
         "run_metadata": collect_run_metadata(args.seed, args.grader_model),
-        "mean": float(np.mean(scores)) if scores else None,
-        "std": float(np.std(scores)) if scores else None,
-        "median": float(np.median(scores)) if scores else None,
-        # NOTE: brier/ece here are NOT proper model-calibration metrics —
-        # the "confidence" used is the evaluator's overall score, not a
-        # model-derived probability. See issue #1. Treat as grader-internal
-        # consistency measures, not calibration.
-        "brier_grader_consistency": brier,
-        "ece_grader_consistency": ece,
-        "grader_parse_failure_rate": parse_fail_rate,
-        "grader_parse_failures_total": total_parse_failures,
-        "grader_rubric_items_total": total_rubric_items,
-        "results": all_results,
+        "mean": grader_runs[0]["mean"] if grader_runs else None,
+        "std": grader_runs[0]["std"] if grader_runs else None,
+        "median": grader_runs[0]["median"] if grader_runs else None,
+        "brier_grader_consistency": grader_runs[0]["brier_grader_consistency"] if grader_runs else None,
+        "ece_grader_consistency": grader_runs[0]["ece_grader_consistency"] if grader_runs else None,
+        "grader_parse_failure_rate": grader_runs[0]["grader_parse_failure_rate"] if grader_runs else None,
+        "grader_parse_failures_total": grader_runs[0]["grader_parse_failures_total"] if grader_runs else None,
+        "grader_rubric_items_total": grader_runs[0]["grader_rubric_items_total"] if grader_runs else None,
+        "results": grader_runs[0]["results"] if grader_runs else [],
+        "grader_runs": grader_runs,
     }
 
     out = Path(args.output)
@@ -284,15 +301,17 @@ def main():
     with open(out, "w") as f:
         json.dump(summary, f, indent=2)
 
-    brier_str = f"{brier:.4f}" if brier is not None else "n/a"
-    ece_str = f"{ece:.4f}" if ece is not None else "n/a"
-    mean_str = f"{summary['mean']:.4f}" if summary['mean'] is not None else "n/a"
-    std_str = f"{summary['std']:.4f}" if summary['std'] is not None else "n/a"
-    fail_str = f"{parse_fail_rate*100:.2f}%" if parse_fail_rate is not None else "n/a"
-    print(f"\n{tag}: score={mean_str} +/- {std_str}  "
-          f"brier*={brier_str}  ece*={ece_str}  "
-          f"grader_parse_fail={fail_str}  -> {out}")
-    print("  (* brier/ece measure grader-internal consistency, not model calibration; issue #1)")
+    for run in grader_runs:
+        brier_str = f"{run['brier_grader_consistency']:.4f}" if run["brier_grader_consistency"] is not None else "n/a"
+        ece_str = f"{run['ece_grader_consistency']:.4f}" if run["ece_grader_consistency"] is not None else "n/a"
+        mean_str = f"{run['mean']:.4f}" if run["mean"] is not None else "n/a"
+        std_str = f"{run['std']:.4f}" if run["std"] is not None else "n/a"
+        fail_rate = run["grader_parse_failure_rate"]
+        fail_str = f"{fail_rate*100:.2f}%" if fail_rate is not None else "n/a"
+        print(f"\n{tag} [{run['role']}] {run['grader_model']}: score={mean_str} +/- {std_str}  "
+              f"brier*={brier_str}  ece*={ece_str}  grader_parse_fail={fail_str}")
+    print(f"-> {out}")
+    print("(* brier/ece measure grader-internal consistency, not model calibration; issue #1)")
 
 
 if __name__ == "__main__":
