@@ -49,26 +49,34 @@ def main():
     parser.add_argument("--healthbench-hard",
                         default="data/raw/healthbench_hard.jsonl",
                         help="path to HealthBench Hard JSONL")
+    parser.add_argument("--healthbench-consensus",
+                        default="data/raw/healthbench_consensus.jsonl",
+                        help="path to HealthBench Consensus JSONL")
     parser.add_argument("--eval-ids",
                         default="data/raw/hard_200_sample_ids.json",
                         help="path to the 200-prompt eval holdout file")
     args = parser.parse_args()
 
-    for p in (args.healthbench, args.healthbench_hard, args.eval_ids):
+    for p in (args.healthbench, args.healthbench_hard, args.healthbench_consensus, args.eval_ids):
         if not Path(p).exists():
             raise SystemExit(f"missing file: {p}  (run scripts/download_data.py first)")
 
     full = load_prompt_ids(args.healthbench)
     hard = load_prompt_ids(args.healthbench_hard)
+    consensus = load_prompt_ids(args.healthbench_consensus)
     eval_ids = load_eval_ids(args.eval_ids)
 
     full_hard_overlap = full & hard
     eval_in_hard = eval_ids & hard
     eval_in_full = eval_ids & full
     hard_is_subset = full_hard_overlap == hard
+    consensus_full_overlap = full & consensus
+    consensus_hard_overlap = hard & consensus
+    consensus_is_subset_of_full = consensus_full_overlap == consensus
 
     print(f"HealthBench full:     {len(full):>6} prompts")
     print(f"HealthBench Hard:     {len(hard):>6} prompts")
+    print(f"HealthBench Consensus:{len(consensus):>6} prompts")
     print(f"Eval holdout:         {len(eval_ids):>6} prompts")
     print()
     if hard_is_subset:
@@ -93,6 +101,19 @@ def main():
     else:
         print("eval in full:         no eval IDs in Full "
               "(HealthBench-only run safe without --exclude-ids)")
+
+    if consensus_is_subset_of_full:
+        print("consensus in full:    consensus is a subset of Full")
+    elif consensus_full_overlap:
+        print(f"consensus in full:    {len(consensus_full_overlap)} overlap "
+              "(not a clean subset)")
+    else:
+        print("consensus in full:    disjoint")
+
+    if consensus_hard_overlap:
+        print(f"consensus in hard:    {len(consensus_hard_overlap)} overlap")
+    else:
+        print("consensus in hard:    disjoint")
 
     print()
     if hard_is_subset or eval_in_full:

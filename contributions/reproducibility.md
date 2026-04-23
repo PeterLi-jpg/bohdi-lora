@@ -230,7 +230,7 @@ Each stage can be submitted alone; see the commands inside the matching `slurm/*
   "bodhi": true
 }
 ```
-Expect ~4800 lines after excluding the 200-sample eval holdout.
+Expect roughly the Full + Hard pool, with any Consensus overlap deduplicated by `prompt_id`, after excluding the 200-sample eval holdout.
 
 ### Stage 2 — filter
 `data/sft/{train,val}.jsonl` — same shape plus a `"grade"` field:

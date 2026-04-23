@@ -37,7 +37,7 @@ python scripts/download_data.py
 
 python scripts/generate_traces.py \
     --model google/medgemma-27b-text-it \
-    --datasets healthbench_hard healthbench \
+    --datasets healthbench_hard healthbench healthbench_consensus \
     --exclude-ids data/raw/hard_200_sample_ids.json \
     --output data/sft/raw_traces.jsonl \
     --use-bodhi \
