@@ -109,9 +109,33 @@ def gen_response(model, tokenizer, device, messages, use_bodhi, bodhi_wrapper=No
     return resp.content
 
 
+def score_response_confidence(model, tokenizer, device, messages, response_text):
+    prompt_text = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+    full_messages = list(messages) + [{"role": "assistant", "content": response_text}]
+    full_text = tokenizer.apply_chat_template(full_messages, tokenize=False, add_generation_prompt=False)
+
+    prompt_ids = tokenizer(prompt_text, return_tensors="pt").input_ids.to(device)
+    full_ids = tokenizer(full_text, return_tensors="pt").input_ids.to(device)
+
+    if full_ids.shape[1] <= prompt_ids.shape[1]:
+        return 0.0
+
+    with torch.no_grad():
+        logits = model(full_ids).logits[:, :-1, :]
+    target_ids = full_ids[:, 1:]
+    log_probs = torch.log_softmax(logits, dim=-1)
+    token_log_probs = log_probs.gather(-1, target_ids.unsqueeze(-1)).squeeze(-1)
+
+    start = prompt_ids.shape[1] - 1
+    response_log_probs = token_log_probs[:, start:]
+    if response_log_probs.numel() == 0:
+        return 0.0
+    return float(torch.exp(response_log_probs.mean()).item())
+
+
 # -- calibration metrics --
 
-def compute_brier_score(results):
+def compute_brier_score(results, confidence_key="score"):
     """Brier score across all individual rubric criteria.
 
     Each criterion is a binary prediction: the model either meets it or not.
@@ -121,7 +145,7 @@ def compute_brier_score(results):
     y_true = []
     y_pred = []
     for r in results:
-        conf = max(0.0, min(1.0, r["score"]))
+        conf = max(0.0, min(1.0, r[confidence_key]))
         for crit in r["criteria_results"]:
             # positive-point criteria only (negative ones are penalties, not predictions)
             if crit["points"] > 0:
@@ -134,7 +158,7 @@ def compute_brier_score(results):
     return float(np.mean((y_pred - y_true) ** 2))
 
 
-def compute_ece(results, n_bins=10):
+def compute_ece(results, n_bins=10, confidence_key="score"):
     """Expected Calibration Error with equal-width bins.
 
     Same setup as Brier: example score (clamped to [0, 1]) is the predicted
@@ -143,7 +167,7 @@ def compute_ece(results, n_bins=10):
     y_true = []
     y_pred = []
     for r in results:
-        conf = max(0.0, min(1.0, r["score"]))
+        conf = max(0.0, min(1.0, r[confidence_key]))
         for crit in r["criteria_results"]:
             if crit["points"] > 0:
                 y_true.append(1.0 if crit["criteria_met"] else 0.0)
@@ -245,9 +269,11 @@ def main():
     for ex in tqdm(examples, desc=tag):
         resp = gen_response(model, tokenizer, device, ex["prompt"], args.use_bodhi, bodhi_wrapper)
         grade = grade_trace(grader, ex["prompt"], resp, ex["rubrics"])
+        model_confidence = score_response_confidence(model, tokenizer, device, ex["prompt"], resp)
         all_results.append({
             "prompt_id": ex["prompt_id"], "response": resp,
             "score": grade["overall_score"], "tag_scores": grade["tag_scores"],
+            "model_confidence": model_confidence,
             "criteria_results": grade["criteria_results"],
             "parse_failures": grade["parse_failures"],
         })
@@ -257,6 +283,8 @@ def main():
 
     brier = compute_brier_score(all_results)
     ece = compute_ece(all_results)
+    brier_model = compute_brier_score(all_results, confidence_key="model_confidence")
+    ece_model = compute_ece(all_results, confidence_key="model_confidence")
     parse_fail_rate = (total_parse_failures / total_rubric_items) if total_rubric_items else None
 
     summary = {
@@ -273,6 +301,8 @@ def main():
         # consistency measures, not calibration.
         "brier_grader_consistency": brier,
         "ece_grader_consistency": ece,
+        "brier_model_calibration": brier_model,
+        "ece_model_calibration": ece_model,
         "grader_parse_failure_rate": parse_fail_rate,
         "grader_parse_failures_total": total_parse_failures,
         "grader_rubric_items_total": total_rubric_items,
@@ -289,10 +319,13 @@ def main():
     mean_str = f"{summary['mean']:.4f}" if summary['mean'] is not None else "n/a"
     std_str = f"{summary['std']:.4f}" if summary['std'] is not None else "n/a"
     fail_str = f"{parse_fail_rate*100:.2f}%" if parse_fail_rate is not None else "n/a"
+    brier_model_str = f"{brier_model:.4f}" if brier_model is not None else "n/a"
+    ece_model_str = f"{ece_model:.4f}" if ece_model is not None else "n/a"
     print(f"\n{tag}: score={mean_str} +/- {std_str}  "
           f"brier*={brier_str}  ece*={ece_str}  "
+          f"brier_model={brier_model_str}  ece_model={ece_model_str}  "
           f"grader_parse_fail={fail_str}  -> {out}")
-    print("  (* brier/ece measure grader-internal consistency, not model calibration; issue #1)")
+    print("  (* brier/ece measure grader-internal consistency; brier_model/ece_model use response log-prob confidence)")
 
 
 if __name__ == "__main__":
