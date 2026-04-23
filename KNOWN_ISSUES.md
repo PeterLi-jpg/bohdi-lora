@@ -20,13 +20,8 @@ TRL probes `formatting_func` on a single example first to decide whether it retu
 ### [#1] Brier / ECE do not measure model calibration — PARTIALLY ADDRESSED
 The implementation uses the evaluator's rubric score as "confidence" and compares it against rubric outcomes from the same grading pass. That is grader-internal consistency, not model calibration. **Action taken**: the fields in eval output are renamed to `brier_grader_consistency` / `ece_grader_consistency` with an in-file comment, and the console summary now flags them (`brier*`/`ece*` with a footnote). **Still open for discussion**: whether to remove these metrics entirely or replace them with a model-derived confidence signal (logprob-based, explicit confidence output, or similar).
 
-### [#3] Same grader for filtering and final evaluation — OPEN
-`filter_traces.py` and `eval_healthbench.py` default to the same grader family (`Qwen/Qwen2.5-14B-Instruct-AWQ`). This couples training-data selection to the evaluator used for claimed gains. **Mitigation paths**:
-- Use a distinct grader for final eval (simplest — change `--grader-model` in `slurm/eval_lora.sh`)
-- Report final results under a second independent grader and compare
-- Keep filter grader ≠ eval grader as policy
-
-Needs team agreement before any ablation is blessed as final.
+### [#3] Same grader for filtering and final evaluation — FIXED
+The final eval path now defaults to an independent Mistral grader and supports additional `--secondary-grader-model` runs in the same output JSON. `slurm/eval_lora.sh` writes the four main configs under `eval/cross_grader/`, preserving both grader runs, and `scripts/grader_correlation.py` reports Spearman correlation plus large per-example disagreements.
 
 ### [#4] Inconsistent filtering-score normalization — OPEN
 Score formula is `sum_of_met_points / sum_of_positive_points`. Negative rubric items contribute to the numerator as penalties but not to the denominator, so a fixed `--min-score 0.4` threshold is not comparable across prompts with different penalty structure. Data selection is therefore partially a function of rubric geometry, not just response quality.
